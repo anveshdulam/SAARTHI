@@ -1,0 +1,32 @@
+{
+  "name": "saarthi",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "dev:frontend": "npm run dev -w frontend",
+    "dev:backend": "npm run dev -w backend",
+    "dev:mcp": "npm run dev -w mcp-server",
+    "dev": "concurrently \"npm run dev:mcp\" \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "seed": "npx tsx mcp-server/src/seed.ts",
+    "test": "npx tsx tests/final_verification.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "workspaces": [
+    "frontend",
+    "backend",
+    "mcp-server"
+  ],
+  "devDependencies": {
+    "@types/node-fetch": "^2.6.13",
+    "concurrently": "^10.0.5",
+    "node-fetch": "^3.3.2",
+    "tsx": "^4.23.15"
+  }
+}
