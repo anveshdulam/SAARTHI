@@ -1,25 +1,55 @@
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@300;400;500&display=swap');
 
 :root {
-  /* Familiar SaaS Base + Deep Charcoal Identity */
-  --bg-primary: #0A0A0A; /* App Shell background */
-  --bg-surface: #141414; /* Card / Modal background */
-  --bg-elevated: #1F1F1F; /* Hover state / Selected state */
-  --bg-input: #121212;
-  
-  --text-primary: #F7F5EE; /* Warm ivory */
-  --text-secondary: #A3A19A;
-  --text-muted: #6B6964;
-  
-  --accent-saffron: #D4AF37; 
-  --accent-blue: #4A6C9C;
-  
-  --status-success: #637D41; 
-  --status-warning: #C17711; 
-  --status-danger: #8C2F2F;  
+  /* DARK APP SHELL */
+  --app-bg: #0E1013;
+  --sidebar-bg: #15181C;
+  --topbar-bg: #111317;
+  --dark-border: #292D33;
 
-  --border-color: rgba(247, 245, 238, 0.08);
-  --border-radius: 6px; /* SaaS standard radius */
+  /* LIGHT WORKSPACE */
+  --workspace-bg: #F5F3ED;
+  --workspace-elevated: #FFFFFF;
+  --workspace-border: #DDDCD6;
+
+  /* TEXT */
+  --text-primary-dark: #F4F6F8;
+  --text-primary-light: #17191D;
+  --text-muted: #8B929C;
+
+  /* BRAND / INTERACTION */
+  --primary: #5367D8;
+  --primary-hover: #4659C8;
+
+  /* SAARTHI SIGNATURE */
+  --saffron: #C99A3A;
+  --saffron-soft: #F0E3C5;
+
+  /* SEMANTIC */
+  --success: #2F8A62;
+  --warning: #C58A24;
+  --danger: #C65353;
+  --info: #4D86C7;
+
+  /* Global Map (Default Dark) */
+  --bg-primary: var(--app-bg);
+  --bg-surface: #121418; /* slightly lighter than app-bg for cards */
+  --bg-elevated: #1C1F24;
+  --bg-input: #111317;
+  
+  --text-primary: var(--text-primary-dark);
+  --text-secondary: #C1C6CD;
+  --text-muted: var(--text-muted);
+  
+  --accent-saffron: var(--saffron); 
+  --accent-blue: var(--primary);
+  
+  --status-success: var(--success); 
+  --status-warning: var(--warning); 
+  --status-danger: var(--danger);  
+
+  --border-color: var(--dark-border);
+  --border-radius: 6px;
   
   --spacing-xs: 4px;
   --spacing-sm: 8px;
@@ -34,6 +64,20 @@
   --sidebar-width: 240px;
   --topbar-height: 56px;
 }
+
+.workspace-light {
+  --bg-primary: var(--workspace-bg);
+  --bg-surface: var(--workspace-elevated);
+  --bg-elevated: #EBEAE4;
+  --bg-input: #FFFFFF;
+  
+  --text-primary: var(--text-primary-light);
+  --text-secondary: #4A5059;
+  --text-muted: #727A85;
+  
+  --border-color: var(--workspace-border);
+}
+
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -64,7 +108,7 @@ h1, h2, h3, h4, h5 { font-weight: 500; }
 
 .sidebar {
   width: var(--sidebar-width);
-  background-color: var(--bg-surface);
+  background-color: var(--sidebar-bg);
   border-right: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;
@@ -112,8 +156,8 @@ h1, h2, h3, h4, h5 { font-weight: 500; }
 }
 .nav-item.active {
   color: var(--text-primary);
-  background-color: rgba(247, 245, 238, 0.03);
-  border-left-color: var(--accent-saffron);
+  background-color: var(--bg-elevated);
+  border-left-color: var(--primary);
 }
 
 .main-content-area {
@@ -127,7 +171,7 @@ h1, h2, h3, h4, h5 { font-weight: 500; }
 .topbar {
   height: var(--topbar-height);
   border-bottom: 1px solid var(--border-color);
-  background-color: var(--bg-primary);
+  background-color: var(--topbar-bg);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -197,13 +241,13 @@ h1, h2, h3, h4, h5 { font-weight: 500; }
   font-weight: 500;
   text-transform: uppercase;
 }
-.badge.warning { background-color: rgba(193, 119, 17, 0.15); color: var(--status-warning); border: 1px solid rgba(193, 119, 17, 0.3); }
-.badge.danger { background-color: rgba(140, 47, 47, 0.15); color: #FFA0A0; border: 1px solid rgba(140, 47, 47, 0.3); }
-.badge.success { background-color: rgba(99, 125, 65, 0.15); color: #B2D884; border: 1px solid rgba(99, 125, 65, 0.3); }
+.badge.warning { background-color: rgba(197, 138, 36, 0.15); color: var(--status-warning); border: 1px solid rgba(197, 138, 36, 0.3); }
+.badge.danger { background-color: rgba(198, 83, 83, 0.15); color: var(--status-danger); border: 1px solid rgba(198, 83, 83, 0.3); }
+.badge.success { background-color: rgba(47, 138, 98, 0.15); color: var(--status-success); border: 1px solid rgba(47, 138, 98, 0.3); }
 
 /* Buttons & Inputs */
 .button {
-  background: var(--bg-elevated);
+  background: var(--bg-surface);
   border: 1px solid var(--border-color);
   color: var(--text-primary);
   padding: 6px 14px;
@@ -217,14 +261,14 @@ h1, h2, h3, h4, h5 { font-weight: 500; }
   align-items: center;
   gap: 6px;
 }
-.button:hover:not(:disabled) { background: #2A2A2A; }
+.button:hover:not(:disabled) { background: var(--bg-elevated); }
 .button:disabled { opacity: 0.5; cursor: not-allowed; }
 .button.primary {
-  background: var(--text-primary);
-  color: var(--bg-primary);
-  border-color: var(--text-primary);
+  background: var(--primary);
+  color: #FFFFFF;
+  border-color: var(--primary);
 }
-.button.primary:hover:not(:disabled) { background: #D4D2CA; }
+.button.primary:hover:not(:disabled) { background: var(--primary-hover); }
 
 .input-composer {
   background-color: var(--bg-input);
@@ -236,7 +280,7 @@ h1, h2, h3, h4, h5 { font-weight: 500; }
   gap: 8px;
   transition: border-color 0.2s;
 }
-.input-composer:focus-within { border-color: var(--accent-saffron); }
+.input-composer:focus-within { border-color: var(--primary); box-shadow: 0 0 0 1px var(--primary); }
 .input-composer input {
   background: transparent;
   border: none;
@@ -331,9 +375,9 @@ h1, h2, h3, h4, h5 { font-weight: 500; }
 
 /* Approval Workflow */
 .approval-box {
-  background: rgba(212, 175, 55, 0.05);
-  border: 1px solid rgba(212, 175, 55, 0.3);
-  border-left: 3px solid var(--accent-saffron);
+  background: rgba(83, 103, 216, 0.05); /* Soft primary */
+  border: 1px solid rgba(83, 103, 216, 0.3);
+  border-left: 3px solid var(--primary);
   border-radius: var(--border-radius);
   padding: var(--spacing-md);
   margin-top: var(--spacing-md);

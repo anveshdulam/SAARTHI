@@ -40,8 +40,7 @@ export function Plans() {
 
       <div className="dashboard-grid">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-lg)' }}>
-          
-          <div className="card">
+          <div className="card workspace-light" style={{ flex: 1 }}>
             <div className="section-title">CURRENT PLAN</div>
             {stateData.commitments.length === 0 ? (
               <div className="empty-state" style={{ padding: '48px 0', border: 'none' }}>
@@ -54,7 +53,6 @@ export function Plans() {
               <LivingPlan stateData={stateData} />
             )}
           </div>
-
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-lg)' }}>
