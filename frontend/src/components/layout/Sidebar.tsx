@@ -15,10 +15,10 @@ export function Sidebar() {
       <div className="sidebar-content">
         <div className="nav-group">
           <Link to="/" className={`nav-item ${path === '/' ? 'active' : ''}`}>Today</Link>
-          <Link to="/" className={`nav-item ${path === '/plans' ? 'active' : ''}`}>Plans</Link>
-          <Link to="/" className={`nav-item ${path === '/commitments' ? 'active' : ''}`}>Commitments</Link>
-          <Link to="/" className={`nav-item ${path === '/memory' ? 'active' : ''}`}>Memory</Link>
-          <Link to="/" className={`nav-item ${path === '/activity' ? 'active' : ''}`}>Activity</Link>
+          <Link to="/plans" className={`nav-item ${path === '/plans' ? 'active' : ''}`}>Plans</Link>
+          <Link to="/commitments" className={`nav-item ${path === '/commitments' ? 'active' : ''}`}>Commitments</Link>
+          <Link to="/memory" className={`nav-item ${path === '/memory' ? 'active' : ''}`}>Memory</Link>
+          <Link to="/activity" className={`nav-item ${path === '/activity' ? 'active' : ''}`}>Activity</Link>
         </div>
         
         <div className="divider" style={{margin: '8px 16px'}} />
