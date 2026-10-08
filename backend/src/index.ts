@@ -34,18 +34,37 @@ app.get("/health", (req, res) => {
   res.json({ status: "ok" });
 });
 
-const DEMO_USER_TOKEN = process.env.DEMO_USER_TOKEN || "saarthi-demo-token-2026";
+const SAARTHI_AUTH_TOKEN = process.env.SAARTHI_AUTH_TOKEN;
+if (!SAARTHI_AUTH_TOKEN) {
+  console.warn("WARNING: SAARTHI_AUTH_TOKEN environment variable is missing. API will reject requests safely.");
+}
 
-app.post("/chat", async (req, res) => {
+function authenticateAndGetUser(req: express.Request, res: express.Response): string | null {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
     res.status(401).json({ error: "Unauthorized access. Valid token required." });
-    return;
+    return null;
   }
-  
+
+  if (!SAARTHI_AUTH_TOKEN) {
+    res.status(500).json({ error: "Server misconfiguration: Authentication is not configured." });
+    return null;
+  }
+
   const token = authHeader.split(" ")[1];
-  // Simple deterministic isolation for the demo
-  const userId = token === "saarthi-demo-token-2026" ? "demo_user_1" : "demo_user_2";
+  if (token === SAARTHI_AUTH_TOKEN) {
+    return "demo_user_1";
+  } else if (token === `${SAARTHI_AUTH_TOKEN}-user2`) {
+    return "demo_user_2";
+  }
+
+  res.status(401).json({ error: "Unauthorized access. Invalid token." });
+  return null;
+}
+
+app.post("/chat", async (req, res) => {
+  const userId = authenticateAndGetUser(req, res);
+  if (!userId) return;
 
   const { message, history } = req.body;
   
@@ -65,13 +84,8 @@ app.post("/chat", async (req, res) => {
 });
 
 app.get("/api/state", async (req, res) => {
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    res.status(401).json({ error: "Unauthorized access" });
-    return;
-  }
-  const token = authHeader.split(" ")[1];
-  const userId = token === "saarthi-demo-token-2026" ? "demo_user_1" : "demo_user_2";
+  const userId = authenticateAndGetUser(req, res);
+  if (!userId) return;
 
   try {
     const mcp = getMcpClient();
@@ -94,9 +108,8 @@ app.get("/api/state", async (req, res) => {
 });
 
 app.post("/api/commitments/:id/approve", async (req, res) => {
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith("Bearer ")) return res.status(401).json({ error: "Unauthorized" });
-  const userId = authHeader.split(" ")[1] === "saarthi-demo-token-2026" ? "demo_user_1" : "demo_user_2";
+  const userId = authenticateAndGetUser(req, res);
+  if (!userId) return;
   
   try {
     const mcp = getMcpClient();
@@ -110,9 +123,8 @@ app.post("/api/commitments/:id/approve", async (req, res) => {
 });
 
 app.post("/api/plans/:id/approve", async (req, res) => {
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith("Bearer ")) return res.status(401).json({ error: "Unauthorized" });
-  const userId = authHeader.split(" ")[1] === "saarthi-demo-token-2026" ? "demo_user_1" : "demo_user_2";
+  const userId = authenticateAndGetUser(req, res);
+  if (!userId) return;
   const { expectedVersion } = req.body;
 
   try {

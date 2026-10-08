@@ -10,9 +10,11 @@ export function useSaarthiState() {
     commitments: [], events: [], constraints: [], plans: []
   });
 
+  const getAuthToken = () => import.meta.env.VITE_SAARTHI_AUTH_TOKEN || "";
+
   const fetchState = async () => {
     try {
-      const res = await fetch("http://localhost:3001/api/state", { headers: { "Authorization": "Bearer saarthi-demo-token-2026" }});
+      const res = await fetch("http://localhost:3001/api/state", { headers: { "Authorization": `Bearer ${getAuthToken()}` }});
       if (res.ok) {
         const data = await res.json();
         setStateData(data);
@@ -54,7 +56,7 @@ export function useSaarthiState() {
     try {
       const response = await fetch("http://localhost:3001/chat", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": "Bearer saarthi-demo-token-2026" },
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${getAuthToken()}` },
         body: JSON.stringify({ message: text.trim(), history: messages.filter(m => m.role !== 'agent') })
       });
       
@@ -69,13 +71,13 @@ export function useSaarthiState() {
   };
 
   const handleApproveCommitment = async (id: string) => {
-    await fetch(`http://localhost:3001/api/commitments/${id}/approve`, { method: "POST", headers: { "Authorization": "Bearer saarthi-demo-token-2026" }});
+    await fetch(`http://localhost:3001/api/commitments/${id}/approve`, { method: "POST", headers: { "Authorization": `Bearer ${getAuthToken()}` }});
     fetchState();
   };
 
   const handleApprovePlan = async (id: string, version: number) => {
     await fetch(`http://localhost:3001/api/plans/${id}/approve`, {
-      method: "POST", headers: { "Content-Type": "application/json", "Authorization": "Bearer saarthi-demo-token-2026" },
+      method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${getAuthToken()}` },
       body: JSON.stringify({ expectedVersion: version })
     });
     fetchState();
