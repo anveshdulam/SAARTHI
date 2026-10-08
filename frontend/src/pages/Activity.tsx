@@ -1,9 +1,12 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useSaarthiState } from '../hooks/useSaarthiState';
 import { MainLayout } from '../layouts/MainLayout';
+import { LoginOverlay } from '../components/LoginOverlay';
 
 export function Activity() {
-  const { stateData } = useSaarthiState();
+  const { isAuthenticated, fetchState, stateData } = useSaarthiState();
+
+  if (!isAuthenticated) return <LoginOverlay onLogin={fetchState} />;
   const [filter, setFilter] = useState('ALL');
 
   const filters = ['ALL', 'COMMITMENTS', 'PLANS', 'APPROVALS', 'MEMORY', 'SYSTEM'];

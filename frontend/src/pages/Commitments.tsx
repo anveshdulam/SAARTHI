@@ -1,10 +1,13 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useSaarthiState } from '../hooks/useSaarthiState';
 import { MainLayout } from '../layouts/MainLayout';
+import { LoginOverlay } from '../components/LoginOverlay';
 
 export function Commitments() {
-  const { stateData, handleSend, loading } = useSaarthiState();
+  const { isAuthenticated, fetchState, stateData, handleSend, loading } = useSaarthiState();
   const [newTitle, setNewTitle] = useState('');
+
+  if (!isAuthenticated) return <LoginOverlay onLogin={fetchState} />;
 
   const active = stateData.commitments.filter((c: any) => c.status === 'pending');
   const atRisk = stateData.commitments.filter((c: any) => c.status === 'missed');

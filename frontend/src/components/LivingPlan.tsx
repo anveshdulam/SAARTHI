@@ -1,4 +1,4 @@
-import React from 'react';
+
 
 export function LivingPlan({ stateData }: any) {
   const commitments = stateData.commitments;

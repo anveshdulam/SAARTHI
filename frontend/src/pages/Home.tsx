@@ -1,10 +1,13 @@
-import React from 'react';
+
 import { useSaarthiState } from '../hooks/useSaarthiState';
 import { MainLayout } from '../layouts/MainLayout';
 import { LivingPlan } from '../components/LivingPlan';
+import { LoginOverlay } from '../components/LoginOverlay';
 
 export function Home() {
-  const { input, setInput, loading, intelligenceStep, stateData, handleSend, handleApproveCommitment, handleApprovePlan } = useSaarthiState();
+  const { isAuthenticated, fetchState, input, setInput, loading, intelligenceStep, stateData, handleSend, handleApprovePlan } = useSaarthiState();
+
+  if (!isAuthenticated) return <LoginOverlay onLogin={fetchState} />;
 
   const activeCommitments = stateData.commitments.filter((c: any) => c.status === 'pending');
   const atRisk = stateData.commitments.filter((c: any) => c.status === 'missed');

@@ -1,10 +1,13 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useSaarthiState } from '../hooks/useSaarthiState';
 import { MainLayout } from '../layouts/MainLayout';
+import { LoginOverlay } from '../components/LoginOverlay';
 
 export function Memory() {
-  const { stateData, handleSend, loading } = useSaarthiState();
+  const { isAuthenticated, fetchState, stateData, handleSend, loading } = useSaarthiState();
   const [newMemory, setNewMemory] = useState('');
+
+  if (!isAuthenticated) return <LoginOverlay onLogin={fetchState} />;
 
   const handleCreate = () => {
     if (newMemory.trim()) {

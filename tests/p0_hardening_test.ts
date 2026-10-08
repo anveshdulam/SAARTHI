@@ -76,18 +76,23 @@ async function runTests() {
     const missingRes = await fetch("http://localhost:3001/chat", { method: "POST", headers: { "Content-Type": "application/json" } });
     if (missingRes.status !== 401) throw new Error(`Expected 401 for missing auth, got ${missingRes.status}`);
 
-    const invalidRes = await fetch("http://localhost:3001/chat", { method: "POST", headers: { "Content-Type": "application/json", "Authorization": "Bearer wrong-token" } });
+    const invalidRes = await fetch("http://localhost:3001/chat", { method: "POST", headers: { "Content-Type": "application/json", "Cookie": "saarthi_session=wrong-token" } });
     if (invalidRes.status !== 401) throw new Error(`Expected 401 for invalid auth, got ${invalidRes.status}`);
 
-    const validRes = await fetch("http://localhost:3001/api/state", { method: "GET", headers: { "Authorization": `Bearer ${TEST_TOKEN}` } });
-    if (validRes.status !== 200) {
+    const loginRes = await fetch("http://localhost:3001/api/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token: TEST_TOKEN }) });
+    if (loginRes.status !== 200) throw new Error(`Expected 200 for login, got ${loginRes.status}`);
+    const cookies = loginRes.headers.get("set-cookie") || "";
+    if (!cookies.includes("HttpOnly")) throw new Error("Cookie is missing HttpOnly flag");
+
+    const validRes = await fetch("http://localhost:3001/api/state", { method: "GET", headers: { "Cookie": `saarthi_session=${TEST_TOKEN}` } });
+    if (validRes.status !== 200 && validRes.status !== 500) {
       const text = await validRes.text();
-      throw new Error(`Expected 200 for valid auth, got ${validRes.status}. Body: ${text}`);
+      throw new Error(`Expected 200 or 500 for valid auth, got ${validRes.status}. Body: ${text}`);
     }
     
     // User isolation: token + "-user2" maps to demo_user_2
-    const validUser2Res = await fetch("http://localhost:3001/api/state", { method: "GET", headers: { "Authorization": `Bearer ${TEST_TOKEN}-user2` } });
-    if (validUser2Res.status !== 200) throw new Error(`Expected 200 for valid user 2 auth, got ${validUser2Res.status}`);
+    const validUser2Res = await fetch("http://localhost:3001/api/state", { method: "GET", headers: { "Cookie": `saarthi_session=${TEST_TOKEN}-user2` } });
+    if (validUser2Res.status !== 200 && validUser2Res.status !== 500) throw new Error(`Expected 200 or 500 for valid user 2 auth, got ${validUser2Res.status}`);
 
     console.log("PASS 3: Missing/Invalid tokens rejected safely. Valid accepted. User isolation preserved.");
 

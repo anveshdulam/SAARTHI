@@ -1,10 +1,13 @@
-import React from 'react';
+
 import { useSaarthiState } from '../hooks/useSaarthiState';
 import { MainLayout } from '../layouts/MainLayout';
 import { LivingPlan } from '../components/LivingPlan';
+import { LoginOverlay } from '../components/LoginOverlay';
 
 export function Plans() {
-  const { stateData } = useSaarthiState();
+  const { isAuthenticated, fetchState, stateData } = useSaarthiState();
+
+  if (!isAuthenticated) return <LoginOverlay onLogin={fetchState} />;
 
   const activePlan = stateData.plans ? stateData.plans.find((p: any) => p.status === 'active') : null;
   const maxVersion = stateData.plans ? Math.max(0, ...stateData.plans.map((p: any) => p.version)) : 0;
@@ -59,7 +62,7 @@ export function Plans() {
           <div className="card">
             <div className="section-title">PLAN VERSION HISTORY</div>
             <div className="timeline" style={{ marginTop: '16px' }}>
-              {stateData.events.filter((e: any) => e.type === 'PLAN_PROPOSED' || e.type === 'PLAN_APPROVED').map((event: any, idx: number, arr: any[]) => {
+              {stateData.events.filter((e: any) => e.type === 'PLAN_PROPOSED' || e.type === 'PLAN_APPROVED').map((event: any) => {
                 const planData = event.new_state ? JSON.parse(event.new_state) : {};
                 return (
                   <div key={event.id} className="timeline-item">

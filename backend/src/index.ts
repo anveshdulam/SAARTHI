@@ -1,7 +1,7 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
-
+import cookieParser from "cookie-parser";
 import { initMcpClient, getMcpClient } from "./mcpClient.js";
 import { askAgent } from "./agent.js";
 
@@ -10,8 +10,9 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-app.use(cors());
+app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
+app.use(cookieParser());
 
 // Initialize MCP Client before handling requests
 
@@ -36,31 +37,40 @@ app.get("/health", (req, res) => {
 
 const SAARTHI_AUTH_TOKEN = process.env.SAARTHI_AUTH_TOKEN;
 if (!SAARTHI_AUTH_TOKEN) {
-  console.warn("WARNING: SAARTHI_AUTH_TOKEN environment variable is missing. API will reject requests safely.");
+  console.error("FATAL: SAARTHI_AUTH_TOKEN environment variable is missing.");
+  process.exit(1);
 }
 
 function authenticateAndGetUser(req: express.Request, res: express.Response): string | null {
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    res.status(401).json({ error: "Unauthorized access. Valid token required." });
+  const token = req.cookies?.saarthi_session;
+  
+  if (!token) {
+    res.status(401).json({ error: "Unauthorized access. Valid session cookie required." });
     return null;
   }
 
-  if (!SAARTHI_AUTH_TOKEN) {
-    res.status(500).json({ error: "Server misconfiguration: Authentication is not configured." });
-    return null;
-  }
-
-  const token = authHeader.split(" ")[1];
   if (token === SAARTHI_AUTH_TOKEN) {
     return "demo_user_1";
   } else if (token === `${SAARTHI_AUTH_TOKEN}-user2`) {
     return "demo_user_2";
   }
 
-  res.status(401).json({ error: "Unauthorized access. Invalid token." });
+  res.status(401).json({ error: "Unauthorized access. Invalid session." });
   return null;
 }
+
+app.post("/api/login", (req, res) => {
+  const { token } = req.body;
+  if (!token) return res.status(400).json({ error: "Token required" });
+  
+  if (token === SAARTHI_AUTH_TOKEN || token === `${SAARTHI_AUTH_TOKEN}-user2`) {
+    res.cookie("saarthi_session", token, { httpOnly: true, sameSite: "lax" });
+    res.json({ success: true });
+    return;
+  }
+  
+  res.status(401).json({ error: "Invalid token" });
+});
 
 app.post("/chat", async (req, res) => {
   const userId = authenticateAndGetUser(req, res);

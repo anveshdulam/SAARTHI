@@ -1,10 +1,13 @@
-import React from 'react';
+
 import { useSaarthiState } from '../hooks/useSaarthiState';
 import { MainLayout } from '../layouts/MainLayout';
+import { LoginOverlay } from '../components/LoginOverlay';
 import { LivingPlan } from '../components/LivingPlan';
 
 export function Alexa() {
-  const { messages, input, setInput, loading, intelligenceStep, stateData, handleSend, handleApproveCommitment, handleApprovePlan } = useSaarthiState();
+  const { isAuthenticated, fetchState, messages, input, setInput, loading, intelligenceStep, stateData, handleSend, handleApprovePlan } = useSaarthiState();
+
+  if (!isAuthenticated) return <LoginOverlay onLogin={fetchState} />;
 
   return (
     <MainLayout>

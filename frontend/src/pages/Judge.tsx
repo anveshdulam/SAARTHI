@@ -1,9 +1,12 @@
-import React from 'react';
+
 import { useSaarthiState } from '../hooks/useSaarthiState';
 import { MainLayout } from '../layouts/MainLayout';
+import { LoginOverlay } from '../components/LoginOverlay';
 
 export function Judge() {
-  const { stateData, loading, intelligenceStep, handleSend } = useSaarthiState();
+  const { isAuthenticated, fetchState, stateData, loading, intelligenceStep, handleSend } = useSaarthiState();
+
+  if (!isAuthenticated) return <LoginOverlay onLogin={fetchState} />;
 
   return (
     <MainLayout>

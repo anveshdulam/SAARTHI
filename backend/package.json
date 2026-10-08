@@ -16,6 +16,7 @@
     "@aws-sdk/client-bedrock-runtime": "^3.1147.0",
     "@modelcontextprotocol/sdk": "^1.32.1",
     "better-sqlite3": "^13.0.3",
+    "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
     "dotenv": "^18.0.6",
     "eventsource": "^5.1.2",
@@ -23,6 +24,7 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@types/cookie-parser": "^1.4.10",
     "@types/eventsource": "^1.1.15"
   }
 }

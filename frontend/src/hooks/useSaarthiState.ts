@@ -10,14 +10,17 @@ export function useSaarthiState() {
     commitments: [], events: [], constraints: [], plans: []
   });
 
-  const getAuthToken = () => import.meta.env.VITE_SAARTHI_AUTH_TOKEN || "";
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(true);
 
   const fetchState = async () => {
     try {
-      const res = await fetch("http://localhost:3001/api/state", { headers: { "Authorization": `Bearer ${getAuthToken()}` }});
+      const res = await fetch("http://localhost:3001/api/state", { credentials: "include" });
       if (res.ok) {
+        setIsAuthenticated(true);
         const data = await res.json();
         setStateData(data);
+      } else if (res.status === 401) {
+        setIsAuthenticated(false);
       }
     } catch (e) {
       console.error("Failed to fetch state:", e);
@@ -56,7 +59,8 @@ export function useSaarthiState() {
     try {
       const response = await fetch("http://localhost:3001/chat", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${getAuthToken()}` },
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ message: text.trim(), history: messages.filter(m => m.role !== 'agent') })
       });
       
@@ -71,19 +75,22 @@ export function useSaarthiState() {
   };
 
   const handleApproveCommitment = async (id: string) => {
-    await fetch(`http://localhost:3001/api/commitments/${id}/approve`, { method: "POST", headers: { "Authorization": `Bearer ${getAuthToken()}` }});
+    await fetch(`http://localhost:3001/api/commitments/${id}/approve`, { method: "POST", credentials: "include" });
     fetchState();
   };
 
   const handleApprovePlan = async (id: string, version: number) => {
     await fetch(`http://localhost:3001/api/plans/${id}/approve`, {
-      method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${getAuthToken()}` },
+      method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
       body: JSON.stringify({ expectedVersion: version })
     });
     fetchState();
   };
 
   return {
+    fetchState,
+    isAuthenticated,
+    setIsAuthenticated,
     messages,
     input,
     setInput,
