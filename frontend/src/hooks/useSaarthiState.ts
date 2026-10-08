@@ -21,14 +21,31 @@ export function useSaarthiState() {
         setStateData(data);
       } else if (res.status === 401) {
         setIsAuthenticated(false);
-      }
     } catch (e) {
       console.error("Failed to fetch state:", e);
     }
   };
 
+  const syncTimezone = async () => {
+    try {
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      if (tz) {
+        await fetch("http://localhost:3001/api/preferences/timezone", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ timezone: tz })
+        });
+      }
+    } catch (e) {
+      console.error("Failed to sync timezone:", e);
+    }
+  };
+
   useEffect(() => {
-    fetchState();
+    fetchState().then(() => {
+      syncTimezone(); // sync once on load after checking auth
+    });
     const interval = setInterval(fetchState, 1500);
     return () => clearInterval(interval);
   }, []);

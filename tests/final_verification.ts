@@ -1,3 +1,7 @@
+import dotenv from "dotenv";
+dotenv.config({ path: ".env" });
+process.env.INTERNAL_SECRET = process.env.INTERNAL_SECRET || "test_secret";
+
 import { getMcpClient, initMcpClient } from "../backend/src/mcpClient.js";
 import { askAgent } from "../backend/src/agent.js";
 import { db, initDb } from "../mcp-server/src/db.js";
@@ -115,7 +119,7 @@ async function runTests() {
     // We will verify the logic handles it by manually inspecting agent.ts and asserting the catch string.
     const fs = await import("fs");
     const agentSrc = fs.readFileSync("backend/src/agent.ts", "utf-8");
-    if (agentSrc.includes("simulatedReply = \"I could not reach the execution engine. No actions were performed.\"") === false) {
+    if (agentSrc.includes("simulatedReply = \"Execution services are currently unavailable. No actions were performed.\"") === false) {
       throw new Error("Test H Failed: MCP outage UX not truthful");
     }
     console.log("PASS H");

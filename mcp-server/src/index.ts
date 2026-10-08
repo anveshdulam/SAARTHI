@@ -8,28 +8,89 @@ import { z } from "zod";
 import crypto from "crypto";
 import { db, initDb } from "./db.js";
 
-dotenv.config();
+dotenv.config({ path: '../.env' });
 initDb();
 
 const app = express();
 const PORT = process.env.PORT || 3002;
 app.use(cors());
+app.use(express.json());
+
+const INTERNAL_SECRET = process.env.INTERNAL_SECRET;
+if (!INTERNAL_SECRET) {
+  console.error("FATAL: INTERNAL_SECRET environment variable is missing.");
+  process.exit(1);
+}
+
+app.post("/internal/events", (req, res) => {
+  const { internalSecret, userId, type, entity, newState } = req.body;
+  if (internalSecret !== INTERNAL_SECRET) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+  const id = crypto.randomUUID();
+  try {
+    db.prepare("INSERT INTO events (id, user_id, type, entity, new_state) VALUES (?, ?, ?, ?, ?)").run(
+      id, userId, type, entity, newState || null
+    );
+    res.json({ success: true, id });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to record event" });
+  }
+});
+
+app.post("/internal/preferences/timezone", (req, res) => {
+  const { internalSecret, userId, timezone } = req.body;
+  if (internalSecret !== INTERNAL_SECRET) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+  
+  if (!userId || !timezone) {
+    return res.status(400).json({ error: "Missing required fields" });
+  }
+
+  // Validate IANA timezone
+  try {
+    Intl.DateTimeFormat(undefined, { timeZone: timezone });
+  } catch (e) {
+    return res.status(400).json({ error: "INVALID_TIMEZONE" });
+  }
+
+  try {
+    db.prepare(`
+      INSERT INTO user_preferences (user_id, timezone, updated_at) 
+      VALUES (?, ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(user_id) DO UPDATE SET timezone=excluded.timezone, updated_at=CURRENT_TIMESTAMP
+    `).run(userId, timezone);
+    res.json({ success: true });
+  } catch (err: any) {
+    console.error("Failed to update timezone:", err);
+    res.status(500).json({ error: "Database error" });
+  }
+});
 
 import { buildPlan } from "./planner.js";
 
 const ListCommitmentsArgs = z.object({ userId: z.string() });
+const IsoDateStr = z.string().regex(/Z|[+-]\d{2}:\d{2}$/, "Must be a fully-qualified ISO timestamp with Z or offset");
+
 const CreateCommitmentArgs = z.object({
   userId: z.string(),
   title: z.string(),
   type: z.enum(["hard", "soft"]),
-  estimated_minutes: z.number().optional(),
-  start_time: z.string().optional(),
-  end_time: z.string().optional(),
-  deadline: z.string().optional(),
+  estimated_minutes: z.number().positive("Duration must be positive").optional(),
+  start_time: IsoDateStr.optional(),
+  end_time: IsoDateStr.optional(),
+  deadline: IsoDateStr.optional(),
   idempotency_key: z.string().optional()
-});
-const AssessCommitmentRiskArgs = z.object({ userId: z.string(), currentTime: z.string() });
-const CreateScheduleProposalArgs = z.object({ userId: z.string(), currentTime: z.string(), cutoffTime: z.string() });
+}).refine(data => {
+  if (data.start_time && data.end_time) {
+    return new Date(data.start_time) < new Date(data.end_time);
+  }
+  return true;
+}, { message: "end_time must be after start_time", path: ["end_time"] });
+
+const AssessCommitmentRiskArgs = z.object({ userId: z.string(), currentTime: IsoDateStr });
+const CreateScheduleProposalArgs = z.object({ userId: z.string(), currentTimeUtc: IsoDateStr, planningDate: z.string(), cutoffLocalTime: z.string() });
 const ApproveCommitmentArgs = z.object({ userId: z.string(), id: z.string() });
 const ApprovePlanArgs = z.object({ userId: z.string(), planId: z.string(), expectedVersion: z.number() });
 
@@ -57,6 +118,7 @@ const getServer = () => {
           description: "List memory and constraints for the user",
           inputSchema: { type: "object", properties: { userId: { type: "string" } }, required: ["userId"] }
         },
+
         {
           name: "save_constraint",
           description: "Save a persistent constraint or preference",
@@ -103,8 +165,13 @@ const getServer = () => {
           description: "Generate a new feasible schedule.",
           inputSchema: {
             type: "object",
-            properties: { userId: { type: "string" }, currentTime: { type: "string" }, cutoffTime: { type: "string" } },
-            required: ["userId", "currentTime", "cutoffTime"]
+            properties: { 
+              userId: { type: "string" }, 
+              currentTimeUtc: { type: "string" }, 
+              planningDate: { type: "string" },
+              cutoffLocalTime: { type: "string" } 
+            },
+            required: ["userId", "currentTimeUtc", "planningDate", "cutoffLocalTime"]
           }
         },
         {
@@ -124,6 +191,51 @@ const getServer = () => {
             properties: { userId: { type: "string" }, planId: { type: "string" }, expectedVersion: { type: "number" } },
             required: ["userId", "planId", "expectedVersion"]
           }
+        },
+        {
+          name: "complete_commitment",
+          description: "Mark a pending commitment as completed.",
+          inputSchema: {
+            type: "object",
+            properties: { userId: { type: "string" }, id: { type: "string" } },
+            required: ["userId", "id"]
+          }
+        },
+        {
+          name: "miss_commitment",
+          description: "Mark a pending commitment as missed.",
+          inputSchema: {
+            type: "object",
+            properties: { userId: { type: "string" }, id: { type: "string" } },
+            required: ["userId", "id"]
+          }
+        },
+        {
+          name: "cancel_commitment",
+          description: "Cancel a proposed or pending commitment.",
+          inputSchema: {
+            type: "object",
+            properties: { userId: { type: "string" }, id: { type: "string" } },
+            required: ["userId", "id"]
+          }
+        },
+        {
+          name: "fail_commitment",
+          description: "Mark a pending commitment as failed.",
+          inputSchema: {
+            type: "object",
+            properties: { userId: { type: "string" }, id: { type: "string" } },
+            required: ["userId", "id"]
+          }
+        },
+        {
+          name: "get_user_preferences",
+          description: "Get user preferences including timezone.",
+          inputSchema: {
+            type: "object",
+            properties: { userId: { type: "string" } },
+            required: ["userId"]
+          }
         }
       ],
     };
@@ -132,11 +244,19 @@ const getServer = () => {
   mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: rawArgs } = request.params;
     
+    if (name === "get_user_preferences") {
+      const parsed = z.object({ userId: z.string() }).safeParse(rawArgs);
+      if (!parsed.success) return { content: [{ type: "text", text: `Validation Error: ${parsed.error.message}` }], isError: true };
+      
+      const tzRow = db.prepare("SELECT timezone FROM user_preferences WHERE user_id=?").get(parsed.data.userId) as any;
+      return { content: [{ type: "text", text: JSON.stringify({ timezone: tzRow?.timezone || "UTC" }) }] };
+    }
+
     if (name === "list_commitments") {
       const parsed = ListCommitmentsArgs.safeParse(rawArgs);
       if (!parsed.success) return { content: [{ type: "text", text: `Validation Error: ${parsed.error.message}` }], isError: true };
       
-      const rows = db.prepare("SELECT * FROM commitments WHERE user_id = ?").all(parsed.data.userId);
+      const rows = db.prepare("SELECT * FROM commitments WHERE user_id = ? AND status IN ('proposed', 'pending', 'missed')").all(parsed.data.userId);
       return { content: [{ type: "text", text: JSON.stringify(rows) }] };
     }
 
@@ -207,13 +327,14 @@ const getServer = () => {
 
       const current = db.prepare("SELECT status FROM commitments WHERE id = ? AND user_id = ?").get(id, userId) as any;
       if (!current) return { content: [{ type: "text", text: "Commitment not found or unauthorized." }], isError: true };
+      if (current.status === 'pending') return { content: [{ type: "text", text: "Idempotent duplicate ignored. Already pending." }] };
       if (current.status !== 'proposed') return { content: [{ type: "text", text: `Cannot approve commitment in state: ${current.status}` }], isError: true };
 
       const tx = db.transaction(() => {
         db.prepare("UPDATE commitments SET status = 'pending' WHERE id = ? AND user_id = ?").run(id, userId);
         if (userId === "TRIGGER_ROLLBACK") throw new Error("Intentional Rollback Trigger");
-        db.prepare("INSERT INTO events (id, user_id, type, entity, new_state) VALUES (?, ?, ?, ?, ?)")
-          .run(crypto.randomUUID(), userId, "COMMITMENT_APPROVED", "commitment", JSON.stringify({ id, status: 'pending' }));
+        db.prepare("INSERT INTO events (id, user_id, type, entity, old_state, new_state) VALUES (?, ?, ?, ?, ?, ?)")
+          .run(crypto.randomUUID(), userId, "COMMITMENT_APPROVED", "commitment", JSON.stringify({ id, status: 'proposed' }), JSON.stringify({ id, status: 'pending' }));
       });
 
       try {
@@ -222,6 +343,51 @@ const getServer = () => {
       } catch (err: any) {
         return { content: [{ type: "text", text: `Transaction Error: ${err.message}` }], isError: true };
       }
+    }
+
+    const transitionCommitment = (userId: string, id: string, newState: string, allowedCurrentStates: string[], eventType: string) => {
+      const current = db.prepare("SELECT status FROM commitments WHERE id = ? AND user_id = ?").get(id, userId) as any;
+      if (!current) return { content: [{ type: "text", text: "Commitment not found or unauthorized." }], isError: true };
+      if (current.status === newState) return { content: [{ type: "text", text: `Idempotent duplicate ignored. Already ${newState}.` }] };
+      if (!allowedCurrentStates.includes(current.status)) return { content: [{ type: "text", text: `Cannot transition from ${current.status} to ${newState}.` }], isError: true };
+
+      const tx = db.transaction(() => {
+        db.prepare("UPDATE commitments SET status = ? WHERE id = ? AND user_id = ?").run(newState, id, userId);
+        if (userId === "TRIGGER_ROLLBACK") throw new Error("Intentional Rollback Trigger");
+        db.prepare("INSERT INTO events (id, user_id, type, entity, old_state, new_state) VALUES (?, ?, ?, ?, ?, ?)")
+          .run(crypto.randomUUID(), userId, eventType, "commitment", JSON.stringify({ id, status: current.status }), JSON.stringify({ id, status: newState }));
+      });
+
+      try {
+        tx();
+        return { content: [{ type: "text", text: `Commitment ${id} transitioned to ${newState}.` }] };
+      } catch (err: any) {
+        return { content: [{ type: "text", text: `Transaction Error: ${err.message}` }], isError: true };
+      }
+    };
+
+    if (name === "complete_commitment") {
+      const parsed = z.object({ userId: z.string(), id: z.string() }).safeParse(rawArgs);
+      if (!parsed.success) return { content: [{ type: "text", text: `Validation Error: ${parsed.error.message}` }], isError: true };
+      return transitionCommitment(parsed.data.userId, parsed.data.id, "completed", ["pending"], "COMMITMENT_COMPLETED");
+    }
+
+    if (name === "miss_commitment") {
+      const parsed = z.object({ userId: z.string(), id: z.string() }).safeParse(rawArgs);
+      if (!parsed.success) return { content: [{ type: "text", text: `Validation Error: ${parsed.error.message}` }], isError: true };
+      return transitionCommitment(parsed.data.userId, parsed.data.id, "missed", ["pending"], "COMMITMENT_MISSED");
+    }
+
+    if (name === "cancel_commitment") {
+      const parsed = z.object({ userId: z.string(), id: z.string() }).safeParse(rawArgs);
+      if (!parsed.success) return { content: [{ type: "text", text: `Validation Error: ${parsed.error.message}` }], isError: true };
+      return transitionCommitment(parsed.data.userId, parsed.data.id, "cancelled", ["proposed", "pending"], "COMMITMENT_CANCELLED");
+    }
+
+    if (name === "fail_commitment") {
+      const parsed = z.object({ userId: z.string(), id: z.string() }).safeParse(rawArgs);
+      if (!parsed.success) return { content: [{ type: "text", text: `Validation Error: ${parsed.error.message}` }], isError: true };
+      return transitionCommitment(parsed.data.userId, parsed.data.id, "failed", ["pending"], "COMMITMENT_FAILED");
     }
 
     if (name === "approve_plan") {
@@ -256,7 +422,7 @@ const getServer = () => {
       const parsed = AssessCommitmentRiskArgs.safeParse(rawArgs);
       if (!parsed.success) return { content: [{ type: "text", text: `Validation Error: ${parsed.error.message}` }], isError: true };
       
-      const rows = db.prepare("SELECT * FROM commitments WHERE status='pending' AND user_id=?").all(parsed.data.userId);
+      const rows = db.prepare("SELECT * FROM commitments WHERE status IN ('pending', 'missed') AND user_id=?").all(parsed.data.userId);
       let risk = "LOW";
       if (rows.length > 5) risk = "MEDIUM";
       return { content: [{ type: "text", text: JSON.stringify({ riskState: risk, activeCommitments: rows.length }) }] };
@@ -266,9 +432,12 @@ const getServer = () => {
       const parsed = CreateScheduleProposalArgs.safeParse(rawArgs);
       if (!parsed.success) return { content: [{ type: "text", text: `Validation Error: ${parsed.error.message}` }], isError: true };
       
-      const { userId, currentTime, cutoffTime } = parsed.data;
+      const { userId, currentTimeUtc, planningDate, cutoffLocalTime } = parsed.data;
       
-      const activeCommitments = db.prepare("SELECT * FROM commitments WHERE status='pending' AND user_id=?").all(userId) as any[];
+      const tzRow = db.prepare("SELECT timezone FROM user_preferences WHERE user_id=?").get(userId) as any;
+      const userTimezone = tzRow?.timezone || "UTC"; // fallback only if not set, but user flow should set it
+
+      const activeCommitments = db.prepare("SELECT * FROM commitments WHERE status IN ('pending', 'missed') AND user_id=?").all(userId) as any[];
       
       const mapped = activeCommitments.map(c => ({
         id: c.id,
@@ -279,7 +448,7 @@ const getServer = () => {
         deadline: c.deadline
       }));
 
-      const planResult = buildPlan(mapped, currentTime, cutoffTime);
+      const planResult = buildPlan(mapped, currentTimeUtc, userTimezone, planningDate, cutoffLocalTime);
       
       // Determine version
       const maxVersionRow = db.prepare("SELECT MAX(version) as maxV FROM plans WHERE user_id=?").get(userId) as any;

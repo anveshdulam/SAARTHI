@@ -1,4 +1,5 @@
-import { addMinutes, isAfter, isBefore, parseISO, max } from "date-fns";
+import { isAfter, isBefore, parseISO } from "date-fns";
+import { fromZonedTime, toZonedTime } from "date-fns-tz";
 
 export interface Commitment {
   id: string;
@@ -25,8 +26,10 @@ export interface PlanResult {
 
 export function buildPlan(
   commitments: Commitment[],
-  currentTime: string,
-  cutoffTime: string // e.g. "21:00" mapping to a daily limit
+  currentTimeUtc: string,
+  userTimezone: string,
+  planningDate: string, // e.g. "2026-10-08"
+  cutoffLocalTime: string // e.g. "21:00"
 ): PlanResult {
   const blocks: Block[] = [];
   const unscheduled: string[] = [];
@@ -70,11 +73,12 @@ export function buildPlan(
     });
 
   // Implement gap-finding scheduling logic
-  let currentPointer = new Date(currentTime);
-  const endOfDay = parseISO(cutoffTime); // assuming cutoffTime has full date or we merge it with current date.
-  // Actually, cutoffTime should be represented as a full datetime relative to today.
-  // For simplicity, let's treat cutoffTime as a Date object parsed before calling.
-  const cutoffDate = new Date(cutoffTime);
+  let currentPointer = new Date(currentTimeUtc);
+  
+  // Construct cutoff string in the user's local timezone (e.g., "2026-10-08T21:00:00")
+  const cutoffLocalStr = `${planningDate}T${cutoffLocalTime}:00`;
+  // Convert local cutoff string to absolute UTC instant Date object
+  const cutoffDate = fromZonedTime(cutoffLocalStr, userTimezone);
 
   for (const task of softTasks) {
     let scheduled = false;

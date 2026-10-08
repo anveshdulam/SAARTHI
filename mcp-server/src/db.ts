@@ -8,6 +8,12 @@ db.pragma("journal_mode = WAL");
 
 export const initDb = () => {
   db.exec(`
+    CREATE TABLE IF NOT EXISTS user_preferences (
+      user_id TEXT PRIMARY KEY,
+      timezone TEXT NOT NULL DEFAULT 'UTC',
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
     CREATE TABLE IF NOT EXISTS commitments (
       id TEXT PRIMARY KEY,
       user_id TEXT NOT NULL,
