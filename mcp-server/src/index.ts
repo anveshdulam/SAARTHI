@@ -29,8 +29,9 @@ app.post("/internal/events", (req, res) => {
   }
   const id = crypto.randomUUID();
   try {
-    db.prepare("INSERT INTO events (id, user_id, type, entity, new_state) VALUES (?, ?, ?, ?, ?)").run(
-      id, userId, type, entity, newState || null
+    const nowIso = new Date().toISOString();
+    db.prepare("INSERT INTO events (id, user_id, type, entity, new_state, created_at) VALUES (?, ?, ?, ?, ?, ?)").run(
+      id, userId, type, entity, newState || null, nowIso
     );
     res.json({ success: true, id });
   } catch (err) {
@@ -56,11 +57,12 @@ app.post("/internal/preferences/timezone", (req, res) => {
   }
 
   try {
+    const nowIso = new Date().toISOString();
     db.prepare(`
       INSERT INTO user_preferences (user_id, timezone, updated_at) 
-      VALUES (?, ?, CURRENT_TIMESTAMP)
-      ON CONFLICT(user_id) DO UPDATE SET timezone=excluded.timezone, updated_at=CURRENT_TIMESTAMP
-    `).run(userId, timezone);
+      VALUES (?, ?, ?)
+      ON CONFLICT(user_id) DO UPDATE SET timezone=excluded.timezone, updated_at=excluded.updated_at
+    `).run(userId, timezone, nowIso);
     res.json({ success: true });
   } catch (err: any) {
     console.error("Failed to update timezone:", err);
@@ -282,7 +284,8 @@ const getServer = () => {
       if (!parsed.success) return { content: [{ type: "text", text: `Validation Error: ${parsed.error.message}` }], isError: true };
       
       const id = crypto.randomUUID();
-      db.prepare("INSERT INTO constraints (id, user_id, type, value, description) VALUES (?, ?, ?, ?, ?)").run(id, parsed.data.userId, parsed.data.type, parsed.data.value, parsed.data.description || null);
+      const nowIso = new Date().toISOString();
+      db.prepare("INSERT INTO constraints (id, user_id, type, value, description, created_at) VALUES (?, ?, ?, ?, ?, ?)").run(id, parsed.data.userId, parsed.data.type, parsed.data.value, parsed.data.description || null, nowIso);
       return { content: [{ type: "text", text: `Constraint saved with ID ${id}` }] };
     }
 
@@ -301,15 +304,16 @@ const getServer = () => {
 
       const id = crypto.randomUUID();
       const eventId = crypto.randomUUID();
+      const nowIso = new Date().toISOString();
       
       const tx = db.transaction(() => {
         db.prepare(`
-          INSERT INTO commitments (id, user_id, title, type, estimated_minutes, start_time, end_time, deadline, status, idempotency_key)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'proposed', ?)
-        `).run(id, userId, title, type, estimated_minutes || null, start_time || null, end_time || null, deadline || null, idempotency_key || null);
+          INSERT INTO commitments (id, user_id, title, type, estimated_minutes, start_time, end_time, deadline, status, idempotency_key, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'proposed', ?, ?, ?)
+        `).run(id, userId, title, type, estimated_minutes || null, start_time || null, end_time || null, deadline || null, idempotency_key || null, nowIso, nowIso);
         
-        db.prepare("INSERT INTO events (id, user_id, type, entity, new_state, request_id) VALUES (?, ?, ?, ?, ?, ?)")
-          .run(eventId, userId, "COMMITMENT_PROPOSED", "commitment", JSON.stringify({ id, title, type, status: 'proposed' }), idempotency_key || null);
+        db.prepare("INSERT INTO events (id, user_id, type, entity, new_state, request_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+          .run(eventId, userId, "COMMITMENT_PROPOSED", "commitment", JSON.stringify({ id, title, type, status: 'proposed' }), idempotency_key || null, nowIso);
       });
       
       try {
@@ -331,10 +335,11 @@ const getServer = () => {
       if (current.status !== 'proposed') return { content: [{ type: "text", text: `Cannot approve commitment in state: ${current.status}` }], isError: true };
 
       const tx = db.transaction(() => {
-        db.prepare("UPDATE commitments SET status = 'pending' WHERE id = ? AND user_id = ?").run(id, userId);
+        const nowIso = new Date().toISOString();
+        db.prepare("UPDATE commitments SET status = 'pending', updated_at = ? WHERE id = ? AND user_id = ?").run(nowIso, id, userId);
         if (userId === "TRIGGER_ROLLBACK") throw new Error("Intentional Rollback Trigger");
-        db.prepare("INSERT INTO events (id, user_id, type, entity, old_state, new_state) VALUES (?, ?, ?, ?, ?, ?)")
-          .run(crypto.randomUUID(), userId, "COMMITMENT_APPROVED", "commitment", JSON.stringify({ id, status: 'proposed' }), JSON.stringify({ id, status: 'pending' }));
+        db.prepare("INSERT INTO events (id, user_id, type, entity, old_state, new_state, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+          .run(crypto.randomUUID(), userId, "COMMITMENT_APPROVED", "commitment", JSON.stringify({ id, status: 'proposed' }), JSON.stringify({ id, status: 'pending' }), nowIso);
       });
 
       try {
@@ -352,10 +357,11 @@ const getServer = () => {
       if (!allowedCurrentStates.includes(current.status)) return { content: [{ type: "text", text: `Cannot transition from ${current.status} to ${newState}.` }], isError: true };
 
       const tx = db.transaction(() => {
-        db.prepare("UPDATE commitments SET status = ? WHERE id = ? AND user_id = ?").run(newState, id, userId);
+        const nowIso = new Date().toISOString();
+        db.prepare("UPDATE commitments SET status = ?, updated_at = ? WHERE id = ? AND user_id = ?").run(newState, nowIso, id, userId);
         if (userId === "TRIGGER_ROLLBACK") throw new Error("Intentional Rollback Trigger");
-        db.prepare("INSERT INTO events (id, user_id, type, entity, old_state, new_state) VALUES (?, ?, ?, ?, ?, ?)")
-          .run(crypto.randomUUID(), userId, eventType, "commitment", JSON.stringify({ id, status: current.status }), JSON.stringify({ id, status: newState }));
+        db.prepare("INSERT INTO events (id, user_id, type, entity, old_state, new_state, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+          .run(crypto.randomUUID(), userId, eventType, "commitment", JSON.stringify({ id, status: current.status }), JSON.stringify({ id, status: newState }), nowIso);
       });
 
       try {
@@ -401,13 +407,14 @@ const getServer = () => {
       if (plan.version !== expectedVersion) return { content: [{ type: "text", text: `Concurrency Error: Stale plan. Expected v${expectedVersion}, found v${plan.version}.` }], isError: true };
 
       const tx = db.transaction(() => {
+        const nowIso = new Date().toISOString();
         // Invalidate all other proposed plans
         db.prepare("UPDATE plans SET status = 'invalidated' WHERE user_id = ? AND status = 'proposed' AND id != ?").run(userId, planId);
         
         // Approve this plan
         db.prepare("UPDATE plans SET status = 'accepted' WHERE id = ?").run(planId);
-        db.prepare("INSERT INTO events (id, user_id, type, entity, plan_version, new_state) VALUES (?, ?, ?, ?, ?, ?)")
-          .run(crypto.randomUUID(), userId, "PLAN_ACCEPTED", "plan", plan.version, JSON.stringify({ id: planId, status: 'accepted' }));
+        db.prepare("INSERT INTO events (id, user_id, type, entity, plan_version, new_state, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+          .run(crypto.randomUUID(), userId, "PLAN_ACCEPTED", "plan", plan.version, JSON.stringify({ id: planId, status: 'accepted' }), nowIso);
       });
 
       try {
@@ -457,11 +464,12 @@ const getServer = () => {
       const planId = crypto.randomUUID();
       
       const tx = db.transaction(() => {
+        const nowIso = new Date().toISOString();
         // Save plan
         db.prepare(`
-          INSERT INTO plans (id, user_id, version, status, reasoning, risk_state, supersedes_version)
-          VALUES (?, ?, ?, 'proposed', ?, ?, ?)
-        `).run(planId, userId, newVersion, planResult.explanation, planResult.riskState, maxVersionRow?.maxV || null);
+          INSERT INTO plans (id, user_id, version, status, reasoning, risk_state, supersedes_version, created_at)
+          VALUES (?, ?, ?, 'proposed', ?, ?, ?, ?)
+        `).run(planId, userId, newVersion, planResult.explanation, planResult.riskState, maxVersionRow?.maxV || null, nowIso);
         
         // Save blocks
         const insertBlock = db.prepare("INSERT INTO plan_blocks (id, plan_id, commitment_id, start_time, end_time) VALUES (?, ?, ?, ?, ?)");
@@ -470,8 +478,8 @@ const getServer = () => {
           insertBlock.run(crypto.randomUUID(), planId, block.commitmentId, block.startTime, block.endTime);
         }
 
-        db.prepare("INSERT INTO events (id, user_id, type, entity, new_state, plan_version) VALUES (?, ?, ?, ?, ?, ?)")
-          .run(crypto.randomUUID(), userId, "PLAN_PROPOSED", "plan", JSON.stringify(planResult), newVersion);
+        db.prepare("INSERT INTO events (id, user_id, type, entity, new_state, plan_version, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+          .run(crypto.randomUUID(), userId, "PLAN_PROPOSED", "plan", JSON.stringify(planResult), newVersion, nowIso);
       });
       
       try {

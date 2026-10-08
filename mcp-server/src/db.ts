@@ -11,7 +11,7 @@ export const initDb = () => {
     CREATE TABLE IF NOT EXISTS user_preferences (
       user_id TEXT PRIMARY KEY,
       timezone TEXT NOT NULL DEFAULT 'UTC',
-      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      updated_at TEXT
     );
 
     CREATE TABLE IF NOT EXISTS commitments (
@@ -25,8 +25,8 @@ export const initDb = () => {
       deadline TEXT,
       status TEXT DEFAULT 'proposed', -- proposed, awaiting_confirmation, pending, completed, missed, rejected, cancelled, failed
       idempotency_key TEXT UNIQUE,
-      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      created_at TEXT,
+      updated_at TEXT
     );
 
     CREATE TABLE IF NOT EXISTS constraints (
@@ -35,7 +35,7 @@ export const initDb = () => {
       type TEXT NOT NULL,
       value TEXT NOT NULL,
       description TEXT,
-      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      created_at TEXT
     );
 
     CREATE TABLE IF NOT EXISTS plans (
@@ -46,7 +46,7 @@ export const initDb = () => {
       reasoning TEXT,
       risk_state TEXT,
       supersedes_version INTEGER,
-      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      created_at TEXT,
       UNIQUE(user_id, version)
     );
 
@@ -69,7 +69,7 @@ export const initDb = () => {
       new_state TEXT,
       request_id TEXT,
       plan_version INTEGER,
-      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      created_at TEXT
     );
   `);
 };
