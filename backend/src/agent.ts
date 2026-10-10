@@ -1,5 +1,6 @@
 import { BedrockRuntimeClient, ConverseCommand, Message, Tool } from "@aws-sdk/client-bedrock-runtime";
 import { getMcpClient } from "./mcpClient.js";
+import { logger } from "./logger.js";
 import { z } from "zod";
 import { CreateScheduleProposalResultSchema } from "./schemas.js";
 import { format } from "date-fns";
@@ -14,7 +15,7 @@ async function recordAgentEvent(userId: string, type: string, entity: string, ne
       body: JSON.stringify({ internalSecret: process.env.INTERNAL_SECRET, userId, type, entity, newState })
     });
   } catch (err) {
-    console.error("Failed to record agent event via internal API:", err);
+    logger.error("Failed to record agent event via internal API", { error: err });
   }
 }
 // Using Claude Sonnet 4.6 as the verified active model. EOL no sooner than Feb 17, 2027.
@@ -35,7 +36,7 @@ async function getMemoryContext(mcp: any, userId: string) {
     
     return `\n\nCURRENT STATE:\nActive Commitments: ${commitmentsText}\nActive Constraints & Preferences: ${constraintsText}`;
   } catch (err) {
-    console.error("Failed to fetch memory context", err);
+    logger.error("Failed to fetch memory context", { error: err });
     return "";
   }
 }
@@ -55,7 +56,7 @@ export async function askAgent(userId: string, userMessage: string, history: Mes
     mcp = getMcpClient();
     if (!mcp) throw new Error("MCP Client not initialized");
   } catch (err: any) {
-    console.error("Failed to get MCP:", err.message);
+    logger.error("Failed to get MCP", { error: err, error_code: "MCP_UNAVAILABLE" });
     return {
       success: false,
       errorCode: "MCP_UNAVAILABLE",
@@ -70,7 +71,7 @@ export async function askAgent(userId: string, userMessage: string, history: Mes
   try {
     mcpToolsRes = await mcp.listTools();
   } catch (err: any) {
-    console.error("Failed to list MCP tools:", err.message);
+    logger.error("Failed to list MCP tools", { error: err, error_code: "MCP_UNAVAILABLE" });
     return {
       success: false,
       errorCode: "MCP_UNAVAILABLE",
@@ -109,7 +110,7 @@ export async function askAgent(userId: string, userMessage: string, history: Mes
     const tzData = JSON.parse(tzRes.content.find((c: any) => c.type === 'text')?.text || "{}");
     if (tzData.timezone) userTimezone = tzData.timezone;
   } catch (err) {
-    console.error("Failed to fetch user preferences:", err);
+    logger.error("Failed to fetch user preferences", { error: err });
   }
 
   const nowUtc = new Date();
@@ -133,19 +134,31 @@ export async function askAgent(userId: string, userMessage: string, history: Mes
     iterations++;
     let response;
     
+    let bedrockStart = performance.now();
     try {
+      bedrockStart = performance.now();
       response = await bedrock.send(new ConverseCommand({
         modelId: MODEL_ID,
         system: [{ text: fullSystemPrompt }],
         messages,
         toolConfig: { tools }
       }));
+      const duration_ms = performance.now() - bedrockStart;
+      logger.info("Bedrock request completed", { operation: "bedrock.converse", duration_ms, success: true });
     } catch (error: any) {
-      console.error("[Agent Error] Bedrock failed:", error.name, error.message);
-      
       let errorCode = "BEDROCK_UNAVAILABLE";
       if (error.name === "AccessDeniedException" || error.name === "UnrecognizedClientException") errorCode = "BEDROCK_AUTH_FAILED";
       if (error.name === "TimeoutError") errorCode = "BEDROCK_TIMEOUT";
+
+      const duration_ms = performance.now() - bedrockStart;
+      logger.error("Bedrock request failed", { 
+        error, 
+        error_code: errorCode, 
+        error_name: error.name,
+        operation: "bedrock.converse",
+        retryable: true,
+        duration_ms
+      });
 
       // DEMO MODE RULE: Deterministic fallback allowed ONLY if MCP is available and it doesn't fabricate success.
       let simulatedReply = "[DEMO MODE] Running via local deterministic agent. ";
@@ -173,7 +186,7 @@ export async function askAgent(userId: string, userMessage: string, history: Mes
           simulatedReply += "I've detected the intent to replan. I am replanning your schedule based on the real database commitments.";
           fallbackSuccess = true;
         } catch (e: any) {
-          console.error("[DEMO MODE] Tool execution failed:", e.message);
+          logger.error("Fallback tool execution failed", { error: e, tool_name: "create_schedule_proposal" });
           simulatedReply = "Execution services are currently unavailable. No actions were performed.";
         }
       } else {
@@ -183,7 +196,7 @@ export async function askAgent(userId: string, userMessage: string, history: Mes
           simulatedReply += "I am listening and maintaining your actual commitments from the database.";
           fallbackSuccess = true;
         } catch (e: any) {
-          console.error("[DEMO MODE] Tool execution failed:", e.message);
+          logger.error("Fallback tool execution failed", { error: e, tool_name: "list_commitments" });
           simulatedReply = "Execution services are currently unavailable. No actions were performed.";
         }
       }
@@ -229,7 +242,7 @@ export async function askAgent(userId: string, userMessage: string, history: Mes
 
     for (const req of toolRequests) {
       const { toolUseId, name, input } = req.toolUse as any;
-      console.log(`[Agent] Executing tool: ${name}`);
+      logger.info("Executing tool", { tool_name: name });
       executedTools.push(name);
       
       try {
@@ -249,11 +262,11 @@ export async function askAgent(userId: string, userMessage: string, history: Mes
         try {
           mcpResult = await mcp.callTool({ name, arguments: toolArgs }, undefined, { timeout: 5000 });
         } catch (e: any) {
-          console.warn("[Agent] Tool error:", e.message);
           let errorCode = "MCP_TOOL_ERROR";
           if (e.code === "RequestTimeout" || e.message?.includes("timed out")) {
             errorCode = "MCP_TIMEOUT";
           }
+          logger.error("MCP Tool execution failed", { error: e, tool_name: name, error_code: errorCode });
           await recordAgentEvent(userId, "EXECUTION_ERROR", "agent", JSON.stringify({ error: errorCode, details: e.message }));
           toolResults.push({
             toolResult: { toolUseId, content: [{ text: `Error: ${e.message}` }], status: "error" }
@@ -264,7 +277,7 @@ export async function askAgent(userId: string, userMessage: string, history: Mes
         let resultText = mcpResult.content.map((c: any) => c.type === 'text' ? c.text : '').join('');
         
         if (mcpResult.isError) {
-          console.warn("[Agent] Tool returned logic error:", resultText);
+          logger.warn("Tool returned logic error", { error_message: resultText, tool_name: name, error_code: "TOOL_LOGIC_ERROR" });
           // e.g. PLANNER_ERROR or VALIDATION_ERROR but we feed it back to LLM so it learns it failed
           toolResults.push({
             toolResult: { toolUseId, content: [{ text: `Error: ${resultText}` }], status: "error" }
@@ -300,7 +313,7 @@ export async function askAgent(userId: string, userMessage: string, history: Mes
         }
 
       } catch (e: any) {
-        console.error(`[Agent] Tool error (${name}):`, e.message);
+        logger.error("Unexpected tool processing error", { error: e, tool_name: name });
         const isTimeout = e.message.includes("timed out");
         toolResults.push({
           toolResult: {

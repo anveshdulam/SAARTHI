@@ -1,75 +1,58 @@
 
 
 export function LivingPlan({ stateData }: any) {
-  const commitments = stateData.commitments;
-  const maxPlanVersion = stateData.plans ? Math.max(0, ...stateData.plans.map((p:any) => p.version)) : 0;
-  const proposedPlanEvent = stateData.events.filter((e: any) => e.type === 'PLAN_PROPOSED').slice(-1)[0];
-  const activeVersion = proposedPlanEvent ? proposedPlanEvent.plan_version - 1 : maxPlanVersion;
+  const plans = stateData.plans || [];
+  const planBlocks = stateData.plan_blocks || [];
 
-  const sortedCommitments = [...commitments].sort((a, b) => {
-    return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
-  });
-
-  if (commitments.length === 0) {
-    return null; // Will show empty state in parent
+  if (plans.length === 0) {
+    return null; 
   }
 
-  return (
-    <div className="card">
-      <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--spacing-lg)'}}>
-        <div className="section-title" style={{margin: 0}}>LIVING PLAN / 0{Math.max(1, activeVersion)}</div>
-        <div className="badge">Today</div>
-      </div>
+  // Get the most recent plan
+  const latestPlan = plans[0];
+  const blocksForPlan = planBlocks.filter((b: any) => b.plan_id === latestPlan.id);
+  const isProposed = latestPlan.status === 'proposed';
 
+  return (
       <div className="timeline">
-        {sortedCommitments.map((c: any) => {
-          const isMissed = c.status === 'missed';
-          const isReplanned = c.status === 'proposed' || c.status === 'pending';
-          
-          return (
-            <div key={c.id} className="timeline-item fade-in">
-              <div className="timeline-time">
-                {new Date(c.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-              </div>
-              <div className={`timeline-content ${isMissed ? 'missed' : isReplanned ? 'replanned' : ''}`}>
-                <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start'}}>
-                  <div>
-                    <div className="headline">{c.title}</div>
-                    <div className="metadata">{c.estimated_minutes ? `${c.estimated_minutes} MIN` : c.type.toUpperCase()}</div>
+        {blocksForPlan.length === 0 ? (
+          <div className="empty-state" style={{ padding: '24px 0', border: 'none' }}>
+            <div className="metadata">No scheduled blocks in this plan.</div>
+          </div>
+        ) : (
+          blocksForPlan.map((b: any) => {
+            return (
+              <div key={b.id} className="timeline-item fade-in">
+                <div className="timeline-time" style={{ fontSize: '0.8rem', paddingTop: '4px' }}>
+                  {new Date(b.start_time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                </div>
+                <div className={`timeline-content ${isProposed ? 'replanned' : ''} ${b.status === 'completed' ? 'success' : ''}`}>
+                  <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start'}}>
+                    <div>
+                      <div className="headline">{b.title}</div>
+                      <div className="metadata">
+                        {new Date(b.start_time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} - {new Date(b.end_time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                      </div>
+                    </div>
+                    <span className={`badge ${b.type === 'hard' ? 'danger' : 'success'}`}>{b.type.toUpperCase()}</span>
                   </div>
-                  {isMissed && <span className="badge danger">MISSED</span>}
-                  {isReplanned && <span className="badge warning">ACTIVE</span>}
-                  {c.status === 'completed' && <span className="badge success">COMPLETED</span>}
                 </div>
               </div>
-            </div>
-          );
-        })}
-
-        {proposedPlanEvent && (
-          <>
-            <div className="timeline-item fade-in" style={{paddingTop: '16px'}}>
-              <div className="timeline-time"></div>
-              <div className="metadata" style={{color: 'var(--accent-saffron)'}}>↓ CONTEXT CHANGED</div>
-            </div>
-            
-            <div className="timeline-item fade-in slide-up">
-              <div className="timeline-time">
-                <span className="badge warning">NEW</span>
-              </div>
-              <div className="timeline-content replanned">
-                <div className="section-title" style={{color: 'var(--accent-saffron)'}}>PLAN / 0{proposedPlanEvent.plan_version} PROPOSED</div>
-                {(() => {
-                  const plan = JSON.parse(proposedPlanEvent.new_state);
-                  return (
-                    <div className="body" style={{marginTop: '8px'}}>{plan.explanation}</div>
-                  );
-                })()}
-              </div>
-            </div>
-          </>
+            );
+          })
+        )}
+        
+        {isProposed && (
+           <div className="timeline-item fade-in slide-up" style={{ marginTop: '16px' }}>
+             <div className="timeline-time">
+               <span className="badge warning">NEW</span>
+             </div>
+             <div className="timeline-content replanned">
+               <div className="section-title" style={{color: 'var(--accent-saffron)'}}>PLAN / 0{latestPlan.version} PROPOSED</div>
+               <div className="body" style={{marginTop: '8px'}}>{latestPlan.reasoning}</div>
+             </div>
+           </div>
         )}
       </div>
-    </div>
   );
 }

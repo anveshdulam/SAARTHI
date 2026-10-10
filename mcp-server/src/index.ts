@@ -7,6 +7,7 @@ import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprot
 import { z } from "zod";
 import crypto from "crypto";
 import { db, initDb } from "./db.js";
+import { logger, requestContext } from "./logger.js";
 
 dotenv.config({ path: '../.env' });
 initDb();
@@ -16,9 +17,15 @@ const PORT = process.env.PORT || 3002;
 app.use(cors());
 app.use(express.json());
 
+app.use((req, res, next) => {
+  const reqId = (req.headers["x-request-id"] as string) || crypto.randomUUID();
+  res.setHeader("X-Request-ID", reqId);
+  requestContext.run({ requestId: reqId }, () => next());
+});
+
 const INTERNAL_SECRET = process.env.INTERNAL_SECRET;
 if (!INTERNAL_SECRET) {
-  console.error("FATAL: INTERNAL_SECRET environment variable is missing.");
+  logger.error("FATAL: INTERNAL_SECRET environment variable is missing.");
   process.exit(1);
 }
 
@@ -37,6 +44,14 @@ app.post("/internal/events", (req, res) => {
   } catch (err) {
     res.status(500).json({ error: "Failed to record event" });
   }
+});
+
+app.post("/internal/mcp/sessions", (req, res) => {
+  const { internalSecret } = req.body;
+  if (internalSecret !== INTERNAL_SECRET) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+  res.json({ count: sessionRegistry.size });
 });
 
 app.post("/internal/preferences/timezone", (req, res) => {
@@ -65,10 +80,22 @@ app.post("/internal/preferences/timezone", (req, res) => {
     `).run(userId, timezone, nowIso);
     res.json({ success: true });
   } catch (err: any) {
-    console.error("Failed to update timezone:", err);
+    logger.error("Failed to update timezone", { error: err });
     res.status(500).json({ error: "Database error" });
   }
 });
+
+const withDbLatency = <T>(operationName: string, fn: () => T): T => {
+  const start = performance.now();
+  try {
+    const res = fn();
+    logger.info("Database operation completed", { operation: operationName, duration_ms: performance.now() - start, success: true });
+    return res;
+  } catch (error) {
+    logger.error("Database operation failed", { operation: operationName, duration_ms: performance.now() - start, success: false, error });
+    throw error;
+  }
+};
 
 import { buildPlan } from "./planner.js";
 
@@ -238,13 +265,25 @@ const getServer = () => {
             properties: { userId: { type: "string" } },
             required: ["userId"]
           }
+        },
+        {
+          name: "list_plans",
+          description: "List the active plan and its blocks.",
+          inputSchema: {
+            type: "object",
+            properties: { userId: { type: "string" } },
+            required: ["userId"]
+          }
         }
       ],
     };
   });
 
   mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
-    const { name, arguments: rawArgs } = request.params;
+    const start = performance.now();
+    try {
+      const res = await (async () => {
+        const { name, arguments: rawArgs } = request.params;
     
     if (name === "get_user_preferences") {
       const parsed = z.object({ userId: z.string() }).safeParse(rawArgs);
@@ -278,6 +317,23 @@ const getServer = () => {
       return { content: [{ type: "text", text: JSON.stringify(rows) }] };
     }
 
+    if (name === "list_plans") {
+      const parsed = ListCommitmentsArgs.safeParse(rawArgs);
+      if (!parsed.success) return { content: [{ type: "text", text: `Validation Error: ${parsed.error.message}` }], isError: true };
+      
+      const plans = db.prepare("SELECT * FROM plans WHERE user_id = ? ORDER BY version DESC").all(parsed.data.userId);
+      const planBlocks = db.prepare(`
+        SELECT pb.*, c.title, c.type 
+        FROM plan_blocks pb 
+        JOIN plans p ON pb.plan_id = p.id 
+        JOIN commitments c ON pb.commitment_id = c.id
+        WHERE p.user_id = ?
+        ORDER BY pb.start_time ASC
+      `).all(parsed.data.userId);
+      
+      return { content: [{ type: "text", text: JSON.stringify({ plans, plan_blocks: planBlocks }) }] };
+    }
+
     if (name === "save_constraint") {
       const schema = z.object({ userId: z.string(), type: z.string(), value: z.string(), description: z.string().optional() });
       const parsed = schema.safeParse(rawArgs);
@@ -285,7 +341,9 @@ const getServer = () => {
       
       const id = crypto.randomUUID();
       const nowIso = new Date().toISOString();
-      db.prepare("INSERT INTO constraints (id, user_id, type, value, description, created_at) VALUES (?, ?, ?, ?, ?, ?)").run(id, parsed.data.userId, parsed.data.type, parsed.data.value, parsed.data.description || null, nowIso);
+      withDbLatency("db.constraint.save", () => {
+        db.prepare("INSERT INTO constraints (id, user_id, type, value, description, created_at) VALUES (?, ?, ?, ?, ?, ?)").run(id, parsed.data.userId, parsed.data.type, parsed.data.value, parsed.data.description || null, nowIso);
+      });
       return { content: [{ type: "text", text: `Constraint saved with ID ${id}` }] };
     }
 
@@ -317,7 +375,7 @@ const getServer = () => {
       });
       
       try {
-        tx();
+        withDbLatency("db.commitment.create", () => tx());
         return { content: [{ type: "text", text: `Commitment ${id} proposed. Awaiting user confirmation.` }] };
       } catch (err: any) {
         return { content: [{ type: "text", text: `Transaction Error: ${err.message}` }], isError: true };
@@ -343,7 +401,7 @@ const getServer = () => {
       });
 
       try {
-        tx();
+        withDbLatency("db.commitment.approve", () => tx());
         return { content: [{ type: "text", text: `Commitment ${id} approved and is now pending.` }] };
       } catch (err: any) {
         return { content: [{ type: "text", text: `Transaction Error: ${err.message}` }], isError: true };
@@ -365,7 +423,7 @@ const getServer = () => {
       });
 
       try {
-        tx();
+        withDbLatency("db.commitment.update", () => tx());
         return { content: [{ type: "text", text: `Commitment ${id} transitioned to ${newState}.` }] };
       } catch (err: any) {
         return { content: [{ type: "text", text: `Transaction Error: ${err.message}` }], isError: true };
@@ -418,7 +476,7 @@ const getServer = () => {
       });
 
       try {
-        tx();
+        withDbLatency("db.plan.approve", () => tx());
         return { content: [{ type: "text", text: `Plan v${plan.version} accepted successfully.` }] };
       } catch (err: any) {
         return { content: [{ type: "text", text: `Transaction Error: ${err.message}` }], isError: true };
@@ -455,7 +513,17 @@ const getServer = () => {
         deadline: c.deadline
       }));
 
-      const planResult = buildPlan(mapped, currentTimeUtc, userTimezone, planningDate, cutoffLocalTime);
+      const plannerStart = performance.now();
+      let planResult;
+      try {
+        planResult = buildPlan(mapped, currentTimeUtc, userTimezone, planningDate, cutoffLocalTime);
+        const duration_ms = performance.now() - plannerStart;
+        logger.info("Planner execution completed", { operation: "planner.buildPlan", duration_ms, success: true });
+      } catch (error) {
+        const duration_ms = performance.now() - plannerStart;
+        logger.error("Planner execution failed", { operation: "planner.buildPlan", duration_ms, success: false, error });
+        throw error;
+      }
       
       // Determine version
       const maxVersionRow = db.prepare("SELECT MAX(version) as maxV FROM plans WHERE user_id=?").get(userId) as any;
@@ -483,7 +551,7 @@ const getServer = () => {
       });
       
       try {
-        tx();
+        withDbLatency("db.plan.create", () => tx());
       } catch (err: any) {
         return { content: [{ type: "text", text: `Transaction Error: ${err.message}` }], isError: true };
       }
@@ -506,34 +574,100 @@ const getServer = () => {
       return { content: [{ type: "text", text: JSON.stringify(responseObj) }] };
     }
 
-    throw new Error(`Unknown tool: ${name}`);
+        throw new Error(`Unknown tool: ${name}`);
+      })();
+      const duration_ms = performance.now() - start;
+      logger.info("MCP Server tool executed", { operation: "tool.execute", tool_name: request.params.name, duration_ms, success: true });
+      return res;
+    } catch (error: any) {
+      const duration_ms = performance.now() - start;
+      logger.error("MCP Server tool failed", { operation: "tool.execute", tool_name: request.params.name, duration_ms, success: false, error });
+      throw error;
+    }
   });
 
   return mcpServer;
 };
 
-const sessions = new Map<string, StreamableHTTPServerTransport>();
+type SessionState = {
+  transport: StreamableHTTPServerTransport;
+  cleanupTimer?: NodeJS.Timeout;
+};
+
+// 60-second retention policy: The default StreamableHTTPClientTransport uses a max 
+// reconnect backoff of ~30s. A 60-second TTL safely bounds memory while allowing 
+// legitimate SDK reconnections to succeed.
+const SESSION_ABANDONED_TTL_MS = parseInt(process.env.MCP_SESSION_TTL_MS || "60000", 10);
+
+const sessionRegistry = new Map<string, SessionState>();
 
 app.post("/mcp", async (req, res) => {
   const sessionId = req.headers['mcp-session-id'] as string;
   let transport: StreamableHTTPServerTransport;
 
   try {
-    if (sessionId && sessions.has(sessionId)) {
-      transport = sessions.get(sessionId)!;
+    if (sessionId) {
+      if (sessionRegistry.has(sessionId)) {
+        const state = sessionRegistry.get(sessionId)!;
+        transport = state.transport;
+        
+        // Reactivate session on POST
+        if (state.cleanupTimer) {
+          clearTimeout(state.cleanupTimer);
+          state.cleanupTimer = undefined;
+        }
+      } else {
+        logger.warn(`Rejecting POST for unknown session ID: ${sessionId}`);
+        res.status(404).send("Session not found");
+        return;
+      }
     } else {
       transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: () => crypto.randomUUID(),
         onsessioninitialized: (sid) => {
-          sessions.set(sid, transport);
+          logger.info(`Session initialized: ${sid}`);
+          sessionRegistry.set(sid, { transport });
         }
       });
       const server = getServer();
       await server.connect(transport);
+
+      const sdkOnClose = transport.onclose;
+      transport.onclose = () => {
+        const currentSid = transport.sessionId;
+        if (currentSid) {
+          const state = sessionRegistry.get(currentSid);
+          if (state?.cleanupTimer) {
+            clearTimeout(state.cleanupTimer);
+          }
+          sessionRegistry.delete(currentSid);
+        }
+        if (sdkOnClose) sdkOnClose();
+      };
     }
+
+    res.socket?.on('close', () => {
+      const isSSE = String(res.getHeader('Content-Type')).includes('text/event-stream');
+      if (isSSE) {
+        const sid = transport.sessionId;
+        logger.info(`SSE stream disconnected for session: ${sid}. Scheduling cleanup.`);
+        if (sid && sessionRegistry.has(sid)) {
+          const state = sessionRegistry.get(sid)!;
+          if (!state.cleanupTimer) {
+            state.cleanupTimer = setTimeout(() => {
+              logger.info(`Session abandoned timeout reached. Evicting session: ${sid}`);
+              sessionRegistry.delete(sid);
+            }, SESSION_ABANDONED_TTL_MS);
+            // Allow the Node.js process to exit even if this timer is pending
+            state.cleanupTimer.unref?.();
+          }
+        }
+      }
+    });
+
     await transport.handleRequest(req, res, req.body);
   } catch (err) {
-    console.error("Transport error:", err);
+    logger.error("Transport error", { error: err });
     res.status(500).send("Transport error");
   }
 });
@@ -544,18 +678,43 @@ app.get("/mcp", async (req, res) => {
     res.status(400).send("Missing session ID");
     return;
   }
-  const transport = sessions.get(sessionId);
-  if (!transport) {
+  const state = sessionRegistry.get(sessionId);
+  if (!state) {
     res.status(404).send("Session not found");
     return;
   }
+
+  // Reactivate session on GET (SSE Reconnect)
+  if (state.cleanupTimer) {
+    clearTimeout(state.cleanupTimer);
+    state.cleanupTimer = undefined;
+  }
+
+  // Monitor this new SSE connection for disconnects
+  res.socket?.on('close', () => {
+    const isSSE = String(res.getHeader('Content-Type')).includes('text/event-stream');
+    if (isSSE) {
+      logger.info(`SSE stream disconnected for session: ${sessionId}. Scheduling cleanup.`);
+      if (sessionRegistry.has(sessionId)) {
+        const currentState = sessionRegistry.get(sessionId)!;
+        if (!currentState.cleanupTimer) {
+          currentState.cleanupTimer = setTimeout(() => {
+            logger.info(`Session abandoned timeout reached. Evicting session: ${sessionId}`);
+            sessionRegistry.delete(sessionId);
+          }, SESSION_ABANDONED_TTL_MS);
+          currentState.cleanupTimer.unref?.();
+        }
+      }
+    }
+  });
+
   try {
-    await transport.handleRequest(req, res);
+    await state.transport.handleRequest(req, res);
   } catch (err) {
-    console.error("GET Transport error:", err);
+    logger.error("GET Transport error", { error: err });
   }
 });
 
 app.listen(PORT, () => {
-  console.log(`MCP Server listening on port ${PORT} (Streamable HTTP at /mcp)`);
+  logger.info(`MCP Server listening on port ${PORT} (Streamable HTTP at /mcp)`);
 });

@@ -6,11 +6,12 @@ import crypto from "crypto";
 const memSessions = new Map<string, { user_id: string, expires_at: number }>();
 import { initMcpClient, getMcpClient } from "./mcpClient.js";
 import { askAgent } from "./agent.js";
+import { requestContext, logger } from "./logger.js";
 
 dotenv.config({ path: '../.env' });
 
 if (!process.env.INTERNAL_SECRET) {
-  console.error("FATAL: INTERNAL_SECRET environment variable is missing.");
+  logger.error("FATAL: INTERNAL_SECRET environment variable is missing.");
   process.exit(1);
 }
 
@@ -32,6 +33,29 @@ app.use(cors({
 app.use(express.json());
 app.use(cookieParser());
 
+app.use((req, res, next) => {
+  // Always generate a canonical ID; never trust client headers fully for this
+  const reqId = crypto.randomUUID();
+  res.setHeader("X-Request-ID", reqId);
+  const start = performance.now();
+  
+  requestContext.run({ requestId: reqId }, () => {
+    res.on("finish", () => {
+      const duration_ms = performance.now() - start;
+      const isError = res.statusCode >= 400;
+      logger[isError ? "error" : "info"]("HTTP request completed", {
+        operation: "http.request",
+        method: req.method,
+        route: req.originalUrl || req.url,
+        status_code: res.statusCode,
+        duration_ms,
+        success: !isError
+      });
+    });
+    next();
+  });
+});
+
 // Initialize MCP Client before handling requests
 
 const connectWithRetry = async (retries = 5) => {
@@ -39,15 +63,15 @@ const connectWithRetry = async (retries = 5) => {
     await initMcpClient();
   } catch (err) {
     if (retries > 0) {
-      console.log(`Failed to connect to MCP Server. Retrying in 2s... (${retries} left)`);
+      logger.info(`Failed to connect to MCP Server. Retrying in 2s... (${retries} left)`);
       setTimeout(() => connectWithRetry(retries - 1), 2000);
     } else {
-      console.error("Failed to connect to MCP Server after multiple attempts.");
+      logger.error("Failed to connect to MCP Server after multiple attempts.");
     }
   }
 };
 connectWithRetry();
-console.log("Starting backend...");
+logger.info("Starting backend...");
 
 app.get("/health", (req, res) => {
   res.json({ status: "ok" });
@@ -55,7 +79,7 @@ app.get("/health", (req, res) => {
 
 const SAARTHI_AUTH_TOKEN = process.env.SAARTHI_AUTH_TOKEN;
 if (!SAARTHI_AUTH_TOKEN) {
-  console.error("FATAL: SAARTHI_AUTH_TOKEN environment variable is missing.");
+  logger.error("FATAL: SAARTHI_AUTH_TOKEN environment variable is missing.");
   process.exit(1);
 }
 
@@ -79,7 +103,10 @@ function authenticateAndGetUser(req: express.Request, res: express.Response): st
     return null;
   }
 
-  return session.user_id;
+  const userId = session.user_id;
+  const context = requestContext.getStore();
+  if (context) context.userId = userId;
+  return userId;
 }
 
 app.post("/api/login", (req, res) => {
@@ -141,7 +168,7 @@ app.put("/api/preferences/timezone", async (req, res) => {
     }
     res.json({ success: true });
   } catch (err: any) {
-    console.error("Failed to set timezone:", err.message);
+    logger.error("Failed to set timezone", { error: err });
     res.status(500).json({ error: "Failed to update timezone" });
   }
 });
@@ -159,11 +186,16 @@ app.post("/chat", async (req, res) => {
     return;
   }
 
+  const agentStart = performance.now();
   try {
     const result = await askAgent(userId, message, history || []);
+    const duration_ms = performance.now() - agentStart;
+    logger[result.success ? "info" : "error"]("Agent execution completed", { operation: "agent.execute", user_id: userId, duration_ms, success: result.success });
     res.json(result);
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    const duration_ms = performance.now() - agentStart;
+    logger.error("Chat agent execution failed", { operation: "agent.execute", user_id: userId, duration_ms, success: false, error });
+    res.status(500).json({ error: "Chat execution failed." });
   }
 });
 
@@ -175,16 +207,21 @@ app.get("/api/state", async (req, res) => {
     const mcp = getMcpClient();
     if (!mcp) throw new Error("MCP not connected");
 
-    const [comms, events, constraints] = await Promise.all([
+    const [comms, events, constraints, plansResult] = await Promise.all([
       mcp.callTool({ name: "list_commitments", arguments: { userId } }),
       mcp.callTool({ name: "list_events", arguments: { userId } }),
-      mcp.callTool({ name: "list_constraints", arguments: { userId } })
+      mcp.callTool({ name: "list_constraints", arguments: { userId } }),
+      mcp.callTool({ name: "list_plans", arguments: { userId } })
     ]);
+
+    const plansData = JSON.parse(((plansResult as any).content[0] as any).text);
 
     res.json({
       commitments: JSON.parse(((comms as any).content[0] as any).text),
       events: JSON.parse(((events as any).content[0] as any).text),
-      constraints: JSON.parse(((constraints as any).content[0] as any).text)
+      constraints: JSON.parse(((constraints as any).content[0] as any).text),
+      plans: plansData.plans,
+      plan_blocks: plansData.plan_blocks
     });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -267,5 +304,5 @@ app.post("/api/plans/:id/approve", async (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`Backend agent server listening on port ${PORT}`);
+  logger.info(`Backend agent server listening on port ${PORT}`);
 });

@@ -8,7 +8,7 @@ export function MainLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className={`app-shell ${mobileOpen ? 'mobile-open' : ''}`}>
       <Sidebar />
-      <div className="main-content-area">
+      <div className="main-content-area workspace-light">
         <Topbar />
         <div className="workspace-scroll">
           {children}

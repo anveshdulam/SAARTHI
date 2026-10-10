@@ -1,5 +1,6 @@
 
 import { Link, useLocation } from 'react-router-dom';
+import { BrandLogo } from './BrandLogo';
 
 export function Sidebar() {
   const location = useLocation();
@@ -7,9 +8,9 @@ export function Sidebar() {
 
   return (
     <aside className="sidebar">
-      <div className="sidebar-header">
-        <div className="logo" style={{fontSize: '1rem'}}>SAARTHI</div>
-        <div className="metadata" style={{marginLeft: 'auto'}}>Beta</div>
+      <div className="sidebar-header" style={{ height: '72px', padding: '0 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <BrandLogo />
+        <div className="badge" style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--text-secondary-dark)', border: '1px solid rgba(255,255,255,0.08)', padding: '2px 6px', fontSize: '0.65rem', borderRadius: '4px' }}>BETA</div>
       </div>
       
       <div className="sidebar-content">

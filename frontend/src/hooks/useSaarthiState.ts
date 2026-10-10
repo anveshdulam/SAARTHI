@@ -6,11 +6,11 @@ export function useSaarthiState() {
   const [loading, setLoading] = useState(false);
   const [intelligenceStep, setIntelligenceStep] = useState<string | null>(null);
   
-  const [stateData, setStateData] = useState<{ commitments: any[], events: any[], constraints: any[], plans: any[] }>({
-    commitments: [], events: [], constraints: [], plans: []
+  const [stateData, setStateData] = useState<{ commitments: any[], events: any[], constraints: any[], plans: any[], plan_blocks: any[] }>({
+    commitments: [], events: [], constraints: [], plans: [], plan_blocks: []
   });
 
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(true);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
 
   const fetchState = async () => {
     try {
@@ -19,10 +19,12 @@ export function useSaarthiState() {
         setIsAuthenticated(true);
         const data = await res.json();
         setStateData(data);
-      } else if (res.status === 401) {
+      } else {
         setIsAuthenticated(false);
+      }
     } catch (e) {
       console.error("Failed to fetch state:", e);
+      setIsAuthenticated(false);
     }
   };
 
@@ -46,20 +48,13 @@ export function useSaarthiState() {
     fetchState().then(() => {
       syncTimezone(); // sync once on load after checking auth
     });
-    const interval = setInterval(fetchState, 1500);
-    return () => clearInterval(interval);
+    // P0: Removed the aggressive 1.5s global polling loop.
   }, []);
 
   const runCinematicSequence = async () => {
-    setIntelligenceStep("UNDERSTANDING");
-    await new Promise(r => setTimeout(r, 600));
-    setIntelligenceStep("CONTEXT UPDATED");
-    await new Promise(r => setTimeout(r, 600));
-    setIntelligenceStep("CAPACITY RECALCULATED");
-    await new Promise(r => setTimeout(r, 800));
-    setIntelligenceStep("PLAN UPDATED");
-    await new Promise(r => setTimeout(r, 400));
-    setIntelligenceStep(null);
+    // P0: Removed fake setTimeout sequences.
+    // System status now accurately reflects the actual network loading state.
+    setIntelligenceStep("EXECUTING");
   };
 
   const handleSend = async (customInput?: string) => {
@@ -81,27 +76,81 @@ export function useSaarthiState() {
         body: JSON.stringify({ message: text.trim(), history: messages.filter(m => m.role !== 'agent') })
       });
       
-      const data = await response.json();
-      setMessages(prev => [...prev, { role: "agent", content: data.reply || data.error || "Done." }]);
+      const reqId = response.headers.get("X-Request-ID") || "unknown";
+      
+      let data;
+      try {
+        data = await response.json();
+      } catch (e) {
+        throw new Error("Invalid server response format.");
+      }
+
+      if (!response.ok || !data.success) {
+        const errCode = data.errorCode || "NETWORK_ERROR";
+        const replyMsg = data.reply || data.error || "System failure.";
+        setMessages(prev => [...prev, { role: "agent", content: `❌ Execution Failed\n\n[${errCode}]\n${replyMsg}\n\nRequest ID: ${reqId}` }]);
+      } else {
+        setMessages(prev => [...prev, { role: "agent", content: data.reply || "Done." }]);
+      }
+      
       fetchState();
-    } catch (err) {
-      setMessages(prev => [...prev, { role: "agent", content: "I could not reach the execution engine. No actions were performed." }]);
+    } catch (err: any) {
+      setMessages(prev => [...prev, { role: "agent", content: `❌ Network or System Error\n\n[NETWORK_ERROR]\n${err.message || "Could not reach the execution engine."}` }]);
+    } finally {
+      setLoading(false);
+      setIntelligenceStep(null);
+    }
+  };
+
+  const handleApproveCommitment = async (id: string) => {
+    if (loading) return;
+    setLoading(true);
+    try {
+      const response = await fetch(`http://localhost:3001/api/commitments/${id}/approve`, { method: "POST", credentials: "include" });
+      const reqId = response.headers.get("X-Request-ID") || "unknown";
+      
+      let data;
+      try { data = await response.json(); } catch (e) { throw new Error("Invalid server response format."); }
+      
+      if (!response.ok || !data.success) {
+        const errCode = data.errorCode || "NETWORK_ERROR";
+        const replyMsg = data.reply || data.error || "Approval failed.";
+        setMessages(prev => [...prev, { role: "agent", content: `❌ Approval Failed\n\n[${errCode}]\n${replyMsg}\n\nRequest ID: ${reqId}` }]);
+      }
+      
+      fetchState();
+    } catch (err: any) {
+      setMessages(prev => [...prev, { role: "agent", content: `❌ Network Error\n\n[NETWORK_ERROR]\n${err.message || "Failed to reach server."}` }]);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleApproveCommitment = async (id: string) => {
-    await fetch(`http://localhost:3001/api/commitments/${id}/approve`, { method: "POST", credentials: "include" });
-    fetchState();
-  };
-
   const handleApprovePlan = async (id: string, version: number) => {
-    await fetch(`http://localhost:3001/api/plans/${id}/approve`, {
-      method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
-      body: JSON.stringify({ expectedVersion: version })
-    });
-    fetchState();
+    if (loading) return;
+    setLoading(true);
+    try {
+      const response = await fetch(`http://localhost:3001/api/plans/${id}/approve`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
+        body: JSON.stringify({ expectedVersion: version })
+      });
+      const reqId = response.headers.get("X-Request-ID") || "unknown";
+      
+      let data;
+      try { data = await response.json(); } catch (e) { throw new Error("Invalid server response format."); }
+      
+      if (!response.ok || (data.success === false)) {
+        const errCode = data.errorCode || "NETWORK_ERROR";
+        const replyMsg = data.reply || data.error || "Plan approval failed.";
+        setMessages(prev => [...prev, { role: "agent", content: `❌ Plan Approval Failed\n\n[${errCode}]\n${replyMsg}\n\nRequest ID: ${reqId}` }]);
+      }
+      
+      fetchState();
+    } catch (err: any) {
+      setMessages(prev => [...prev, { role: "agent", content: `❌ Network Error\n\n[NETWORK_ERROR]\n${err.message || "Failed to reach server."}` }]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return {
