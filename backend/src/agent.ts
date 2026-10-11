@@ -34,10 +34,24 @@ async function getMemoryContext(mcp: any, userId: string) {
     const commitmentsText = commitmentsRes.content.find((c: any) => c.type === 'text')?.text || '[]';
     const constraintsText = constraintsRes.content.find((c: any) => c.type === 'text')?.text || '[]';
     
-    return `\n\nCURRENT STATE:\nActive Commitments: ${commitmentsText}\nActive Constraints & Preferences: ${constraintsText}`;
+    let cutoffTime = "22:00";
+    try {
+      const parsedConstraints = JSON.parse(constraintsText);
+      const timeLimitConstraint = parsedConstraints.find((c: any) => c.type === "time_limit" && c.value);
+      if (timeLimitConstraint) {
+        cutoffTime = timeLimitConstraint.value;
+      }
+    } catch {
+      // ignore JSON parse error
+    }
+
+    return {
+      memoryPrompt: `\n\nCURRENT STATE:\nActive Commitments: ${commitmentsText}\nActive Constraints & Preferences: ${constraintsText}`,
+      cutoffTime
+    };
   } catch (err) {
     logger.error("Failed to fetch memory context", { error: err });
-    return "";
+    return { memoryPrompt: "", cutoffTime: "22:00" };
   }
 }
 
@@ -101,7 +115,7 @@ export async function askAgent(userId: string, userMessage: string, history: Mes
       }
     }));
 
-  const memoryContext = await getMemoryContext(mcp, userId);
+  const { memoryPrompt, cutoffTime } = await getMemoryContext(mcp, userId);
   
   // Fetch Timezone
   let userTimezone = "UTC";
@@ -121,9 +135,17 @@ export async function askAgent(userId: string, userMessage: string, history: Mes
   
   const timeContext = `\n\nCURRENT UTC: ${currentTimeUtcStr}\nUSER TIMEZONE: ${userTimezone}\nUSER LOCAL TIME: ${localTimeStr}\nLOCAL DATE: ${localDateStr}`;
   
-  const fullSystemPrompt = SYSTEM_PROMPT + memoryContext + timeContext;
+  const fullSystemPrompt = SYSTEM_PROMPT + memoryPrompt + timeContext;
 
-  let messages: Message[] = [...history, { role: "user", content: [{ text: userMessage }] }];
+  const formattedHistory: Message[] = (history || []).map((h: any) => {
+    if (Array.isArray(h.content)) return h;
+    return {
+      role: h.role === 'agent' ? 'assistant' : (h.role || 'user'),
+      content: [{ text: typeof h.content === 'string' ? h.content : JSON.stringify(h.content) }]
+    };
+  });
+
+  let messages: Message[] = [...formattedHistory, { role: "user", content: [{ text: userMessage }] }];
   const executedTools: string[] = [];
   let actionPerformed = false;
 
@@ -178,7 +200,7 @@ export async function askAgent(userId: string, userMessage: string, history: Mes
               userId, 
               currentTimeUtc: currentTimeUtcStr, 
               planningDate: localDateStr,
-              cutoffLocalTime: "21:00"
+              cutoffLocalTime: cutoffTime
             } 
           });
           executedTools.push("create_schedule_proposal");
@@ -252,7 +274,7 @@ export async function askAgent(userId: string, userMessage: string, history: Mes
         if (name === "create_schedule_proposal") {
           toolArgs.currentTimeUtc = currentTimeUtcStr;
           toolArgs.planningDate = localDateStr;
-          toolArgs.cutoffLocalTime = "21:00"; // fallback default for cutoff time
+          toolArgs.cutoffLocalTime = cutoffTime;
         }
         if (name === "assess_commitment_risk") {
           toolArgs.currentTime = currentTimeUtcStr;

@@ -1,33 +1,166 @@
 import React, { useState } from 'react';
+import { signIn, signUp, confirmSignUp, resendSignUpCode, resetPassword, confirmResetPassword, signOut } from 'aws-amplify/auth';
 import { BrandLogo } from '../components/layout/BrandLogo';
 
 export function LandingPage({ onLogin }: { onLogin: () => void }) {
   const [showLogin, setShowLogin] = useState(false);
-  const [token, setToken] = useState('');
+  const [authMode, setAuthMode] = useState<'signIn' | 'signUp' | 'confirm' | 'forgot' | 'reset'>('signIn');
+  const [email, setEmail] = useState(() => localStorage.getItem('saarthi_auth_email') || '');
+  const [password, setPassword] = useState('');
+  const [code, setCode] = useState('');
   const [error, setError] = useState('');
+  const [resendInfo, setResendInfo] = useState('');
   const [loading, setLoading] = useState(false);
+  const [signUpUsername, setSignUpUsername] = useState(() => localStorage.getItem('saarthi_auth_username') || '');
+
+  const getUsernameFromEmail = (rawEmail: string) => {
+    return rawEmail.trim().toLowerCase().replace(/[^a-zA-Z0-9_.-]/g, '_');
+  };
+
+  const handleDemoEnter = () => {
+    sessionStorage.setItem('saarthi_demo_override', 'true');
+    onLogin();
+  };
+
+  const passwordRules = [
+    { label: 'At least 8 characters', valid: password.length >= 8 },
+    { label: 'One number', valid: /[0-9]/.test(password) },
+    { label: 'One special character', valid: /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]+/.test(password) },
+    { label: 'One uppercase letter', valid: /[A-Z]/.test(password) },
+    { label: 'One lowercase letter', valid: /[a-z]/.test(password) }
+  ];
+
+  const handleResendCode = async () => {
+    if (loading) return;
+    setLoading(true);
+    setError('');
+    setResendInfo('');
+    try {
+      const targetUser = signUpUsername || localStorage.getItem('saarthi_auth_username') || getUsernameFromEmail(email) || email;
+      try {
+        await resendSignUpCode({ username: targetUser });
+      } catch (err: any) {
+        if (targetUser !== email) {
+          await resendSignUpCode({ username: email });
+        } else {
+          throw err;
+        }
+      }
+      setResendInfo('A fresh verification code was sent to your email.');
+    } catch (err: any) {
+      setError(err.message || 'Failed to resend verification code');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (loading) return;
     setLoading(true);
     setError('');
+    setResendInfo('');
+    
     try {
-      const res = await fetch("http://localhost:3001/api/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ token })
-      });
-      if (res.ok) {
-        await onLogin();
-        setLoading(false);
-      } else {
-        setError("Invalid token");
-        setLoading(false);
+      if (authMode === 'signIn') {
+        let result;
+        try {
+          result = await signIn({ username: email, password });
+        } catch (signInErr: any) {
+          if (signInErr.name === 'UserAlreadyAuthenticatedException' || signInErr.message?.includes('already a signed in user')) {
+            try {
+              await signOut();
+              result = await signIn({ username: email, password });
+            } catch (retryErr: any) {
+              sessionStorage.removeItem('saarthi_demo_override');
+              await onLogin();
+              return;
+            }
+          } else {
+            throw signInErr;
+          }
+        }
+        
+        if (result.isSignedIn) {
+          sessionStorage.removeItem('saarthi_demo_override');
+          try {
+            await onLogin();
+          } catch (e) {
+            setError("Failed to initialize user session after login.");
+            setLoading(false);
+          }
+          return;
+        } else if (result.nextStep) {
+          const step = result.nextStep.signInStep;
+          if (step === 'CONFIRM_SIGN_UP') {
+            const derived = localStorage.getItem('saarthi_auth_username') || getUsernameFromEmail(email);
+            setSignUpUsername(derived);
+            setAuthMode('confirm');
+            setCode('');
+          } else if (step === 'RESET_PASSWORD') {
+            setAuthMode('forgot');
+          } else if (step === 'CONFIRM_SIGN_IN_WITH_NEW_PASSWORD_REQUIRED') {
+            setError('Account requires a new password. Please use the "Forgot Password" flow.');
+          } else {
+            setError(`Unsupported challenge: ${step}. Please contact support.`);
+          }
+        }
+      } else if (authMode === 'signUp') {
+        const derivedUsername = getUsernameFromEmail(email);
+        setSignUpUsername(derivedUsername);
+        localStorage.setItem('saarthi_auth_username', derivedUsername);
+        localStorage.setItem('saarthi_auth_email', email);
+
+        const result = await signUp({ 
+          username: derivedUsername, 
+          password, 
+          options: { userAttributes: { email, birthdate: '1990-01-01' } } 
+        });
+        
+        if (result.isSignUpComplete) {
+          setAuthMode('signIn');
+        } else if (result.nextStep?.signUpStep === 'CONFIRM_SIGN_UP') {
+          setAuthMode('confirm');
+          setCode('');
+        } else {
+          setError(`Unsupported sign-up step: ${result.nextStep?.signUpStep}`);
+        }
+      } else if (authMode === 'confirm') {
+        const targetUsername = signUpUsername || localStorage.getItem('saarthi_auth_username') || getUsernameFromEmail(email) || email;
+        try {
+          await confirmSignUp({ username: targetUsername, confirmationCode: code.trim() });
+        } catch (firstErr: any) {
+          if (targetUsername !== email) {
+            await confirmSignUp({ username: email, confirmationCode: code.trim() });
+          } else {
+            throw firstErr;
+          }
+        }
+        setAuthMode('signIn');
+        setPassword('');
+        setCode('');
+        setResendInfo('Email verified successfully! Please sign in with your password.');
+      } else if (authMode === 'forgot') {
+        const result = await resetPassword({ username: email });
+        if (result.nextStep?.resetPasswordStep === 'CONFIRM_RESET_PASSWORD_WITH_CODE') {
+          setAuthMode('reset');
+          setCode('');
+          setPassword('');
+        } else if (result.nextStep?.resetPasswordStep === 'DONE') {
+          setAuthMode('signIn');
+        } else {
+          setError(`Unsupported reset step: ${result.nextStep?.resetPasswordStep}`);
+        }
+      } else if (authMode === 'reset') {
+        await confirmResetPassword({ username: email, confirmationCode: code.trim(), newPassword: password });
+        setAuthMode('signIn');
+        setPassword('');
+        setCode('');
+        setResendInfo('Password reset successfully! Please sign in.');
       }
-    } catch (err) {
-      setError("Network error");
+    } catch (err: any) {
+      setError(err.message || "Authentication failed");
+    } finally {
       setLoading(false);
     }
   };
@@ -168,7 +301,7 @@ export function LandingPage({ onLogin }: { onLogin: () => void }) {
                   <h2 style={{ fontSize: '20px', fontWeight: 600 }}>Context</h2>
                   <div style={{ padding: '20px', background: 'var(--workspace-elevated)', border: '1px solid var(--workspace-border)', borderRadius: '12px' }}>
                     <div style={{ fontSize: '12px', textTransform: 'uppercase', color: 'var(--text-muted-light)', letterSpacing: '0.05em', marginBottom: '12px' }}>MEMORY CONSTRAINT</div>
-                    <div style={{ fontSize: '14px', lineHeight: 1.5 }}>"Always prioritize latency in architectural decisions. If a change adds >50ms overhead, it requires executive approval."</div>
+                    <div style={{ fontSize: '14px', lineHeight: 1.5 }}>"Always prioritize latency in architectural decisions. If a change adds &gt;50ms overhead, it requires executive approval."</div>
                   </div>
                 </div>
               </div>
@@ -240,8 +373,17 @@ export function LandingPage({ onLogin }: { onLogin: () => void }) {
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '32px' }}>
               <div>
-                <h2 className="editorial-heading" style={{ fontSize: '1.75rem', marginBottom: '8px', color: '#2C2A28' }}>Welcome back</h2>
-                <p style={{ color: 'var(--text-secondary-light)' }}>Authenticate with your secure server token.</p>
+                <h2 className="editorial-heading" style={{ fontSize: '1.75rem', marginBottom: '8px', color: '#2C2A28' }}>
+                  {authMode === 'signIn' ? "Welcome back" : 
+                   authMode === 'signUp' ? "Create an account" : 
+                   authMode === 'confirm' ? "Verify your email" : 
+                   "Account recovery"}
+                </h2>
+                <p style={{ color: 'var(--text-secondary-light)' }}>
+                  {authMode === 'confirm' ? "Enter the code sent to your email." : 
+                   authMode === 'reset' ? "Enter your new password and the code sent to your email." :
+                   "Authenticate to access your workspace."}
+                </p>
               </div>
               <button className="icon-button" onClick={() => setShowLogin(false)} style={{ color: 'var(--text-muted-light)' }}>
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
@@ -249,29 +391,110 @@ export function LandingPage({ onLogin }: { onLogin: () => void }) {
             </div>
             
             <form onSubmit={handleSubmit}>
-              <div style={{ marginBottom: '24px' }}>
-                <label className="label" style={{ color: 'var(--text-primary-light)', fontWeight: 500 }}>Secure Token</label>
-                <input 
-                  type="password" 
-                  value={token} 
-                  onChange={e => setToken(e.target.value)} 
-                  placeholder="Enter your server token" 
-                  className={`input ${error ? 'error' : ''}`}
-                  style={{ 
-                    backgroundColor: 'var(--workspace-bg)', 
-                    color: 'var(--text-primary-light)', 
-                    borderColor: error ? 'var(--danger)' : 'var(--workspace-border)',
-                    padding: '12px 16px',
-                    fontSize: '16px'
-                  }}
-                  disabled={loading}
-                  autoFocus
-                />
-                {error && <div className="field-error" style={{ marginTop: '8px' }}>{error}</div>}
-              </div>
-              <button type="submit" className="button primary lg" style={{ width: '100%', fontWeight: 600 }} disabled={loading}>
-                {loading ? <div className="spinner" style={{ borderColor: 'rgba(255,255,255,0.3)', borderTopColor: 'white' }}></div> : "Authenticate"}
+              {(authMode === 'signIn' || authMode === 'signUp' || authMode === 'forgot') && (
+                <div style={{ marginBottom: '16px' }}>
+                  <label className="label" style={{ color: 'var(--text-primary-light)', fontWeight: 500 }}>Email</label>
+                  <input type="email" value={email} onChange={e => setEmail(e.target.value)} required placeholder="Enter your email" className={`input ${error ? 'error' : ''}`} style={{ width: '100%', backgroundColor: 'var(--workspace-bg)', color: 'var(--text-primary-light)', borderColor: error ? 'var(--danger)' : 'var(--workspace-border)', padding: '12px 16px', fontSize: '16px' }} disabled={loading} autoFocus />
+                </div>
+              )}
+              
+              {(authMode === 'signIn' || authMode === 'signUp' || authMode === 'reset') && (
+                <div style={{ marginBottom: '16px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <label className="label" style={{ color: 'var(--text-primary-light)', fontWeight: 500 }}>
+                      {authMode === 'reset' ? "New Password" : "Password"}
+                    </label>
+                    {authMode === 'signIn' && (
+                      <span style={{ fontSize: '13px', color: 'var(--primary)', cursor: 'pointer' }} onClick={() => setAuthMode('forgot')}>Forgot password?</span>
+                    )}
+                  </div>
+                  <input type="password" value={password} onChange={e => setPassword(e.target.value)} required placeholder="Enter your password" className={`input ${error ? 'error' : ''}`} style={{ width: '100%', backgroundColor: 'var(--workspace-bg)', color: 'var(--text-primary-light)', borderColor: error ? 'var(--danger)' : 'var(--workspace-border)', padding: '12px 16px', fontSize: '16px' }} disabled={loading} />
+                  
+                  {(authMode === 'signUp' || authMode === 'reset') && (
+                    <div style={{ marginTop: '12px', fontSize: '13px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      {passwordRules.map((rule, idx) => (
+                        <div key={idx} style={{ color: rule.valid ? 'var(--status-success)' : 'var(--text-muted-light)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          {rule.valid ? (
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                          ) : (
+                            <div style={{ width: '4px', height: '4px', borderRadius: '50%', backgroundColor: 'currentColor', marginLeft: '5px', marginRight: '5px' }}></div>
+                          )}
+                          <span style={{ fontWeight: rule.valid ? 500 : 400 }}>{rule.label}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {(authMode === 'confirm' || authMode === 'reset') && (
+                <div style={{ marginBottom: '16px' }}>
+                  <label className="label" style={{ color: 'var(--text-primary-light)', fontWeight: 500 }}>Confirmation Code</label>
+                  <input type="text" value={code} onChange={e => setCode(e.target.value)} required placeholder="Enter code" className={`input ${error ? 'error' : ''}`} style={{ width: '100%', backgroundColor: 'var(--workspace-bg)', color: 'var(--text-primary-light)', borderColor: error ? 'var(--danger)' : 'var(--workspace-border)', padding: '12px 16px', fontSize: '16px' }} disabled={loading} autoFocus />
+                  
+                  {authMode === 'confirm' && (
+                    <div style={{ marginTop: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '13px' }}>
+                      <span style={{ color: 'var(--text-muted-light)' }}>Code expired or didn't arrive?</span>
+                      <button 
+                        type="button" 
+                        onClick={handleResendCode} 
+                        disabled={loading}
+                        style={{ background: 'none', border: 'none', padding: 0, color: 'var(--primary)', cursor: 'pointer', fontWeight: 500, textDecoration: 'underline' }}
+                      >
+                        Resend code
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {resendInfo && (
+                <div style={{ padding: '10px 14px', background: 'rgba(16, 185, 129, 0.1)', border: '1px solid var(--status-success)', borderRadius: '6px', color: 'var(--status-success)', fontSize: '13px', marginBottom: '16px' }}>
+                  {resendInfo}
+                </div>
+              )}
+
+              {error && <div className="field-error" style={{ marginBottom: '16px', marginTop: '-4px' }}>{error}</div>}
+              
+              <button type="submit" className="button primary lg" style={{ width: '100%', fontWeight: 600, marginTop: '8px' }} disabled={loading}>
+                {loading ? <div className="spinner" style={{ borderColor: 'rgba(255,255,255,0.3)', borderTopColor: 'white' }}></div> : 
+                 authMode === 'signIn' ? "Sign In" : 
+                 authMode === 'signUp' ? "Create Account" : 
+                 authMode === 'confirm' ? "Verify Email" : 
+                 authMode === 'forgot' ? "Send Reset Code" : "Reset Password"}
               </button>
+
+              <div style={{ marginTop: '24px', textAlign: 'center', fontSize: '14px', color: 'var(--text-secondary-light)' }}>
+                {authMode === 'signIn' ? (
+                  <>Don't have an account? <span style={{ color: 'var(--primary)', cursor: 'pointer', fontWeight: 500 }} onClick={() => setAuthMode('signUp')}>Sign up</span></>
+                ) : (
+                  <>Already have an account? <span style={{ color: 'var(--primary)', cursor: 'pointer', fontWeight: 500 }} onClick={() => setAuthMode('signIn')}>Sign in</span></>
+                )}
+              </div>
+
+              <div style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px solid var(--workspace-border)', textAlign: 'center' }}>
+                <button 
+                  type="button" 
+                  onClick={handleDemoEnter} 
+                  style={{ 
+                    width: '100%', 
+                    padding: '10px 16px', 
+                    backgroundColor: 'var(--workspace-elevated)', 
+                    border: '1px dashed var(--saffron)', 
+                    color: 'var(--saffron)', 
+                    borderRadius: '8px', 
+                    fontWeight: 600, 
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px'
+                  }}
+                >
+                  <span>⚡</span> Continue in Demo Mode (No Login Required)
+                </button>
+              </div>
             </form>
           </div>
         </div>

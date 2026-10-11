@@ -1,5 +1,5 @@
-
 import { Link, useLocation } from 'react-router-dom';
+import { signOut } from 'aws-amplify/auth';
 import { BrandLogo } from './BrandLogo';
 
 export function Sidebar() {
@@ -30,9 +30,25 @@ export function Sidebar() {
         </div>
       </div>
 
-      <div style={{padding: '16px', borderTop: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', gap: '8px'}}>
-        <div style={{width: '8px', height: '8px', borderRadius: '50%', background: 'var(--status-success)'}}></div>
-        <span className="metadata">Engine Online</span>
+      <div style={{padding: '16px', borderTop: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between'}}>
+        <div style={{display: 'flex', alignItems: 'center', gap: '8px'}}>
+          <div style={{width: '8px', height: '8px', borderRadius: '50%', background: 'var(--status-success)'}}></div>
+          <span className="metadata">Engine Online</span>
+        </div>
+        <button 
+          onClick={async () => {
+            try {
+              await signOut();
+              window.location.reload();
+            } catch (err) {
+              console.error(err);
+            }
+          }}
+          style={{ background: 'none', border: 'none', color: 'var(--text-secondary-dark)', cursor: 'pointer', padding: '4px' }}
+          title="Sign Out"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+        </button>
       </div>
     </aside>
   );

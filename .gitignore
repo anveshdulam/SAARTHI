@@ -8,3 +8,24 @@ dist/
 *.db-shm
 coverage/
 .agent/
+.gemini/
+
+# Scratch & temporary logs
+*.log
+scratch*
+test_g_log.txt
+
+# Ad-hoc scratch scripts
+audit_llm.ts
+audit_protocol.ts
+test_outage.ts
+test_planner_tz.js
+test_bedrock.ts
+test_handshake.ts
+trigger_planner.ts
+trigger_state.ts
+tests/trigger_planner.ts
+mcp-server/scratch_tz.js
+
+# UI reference dump
+SAARTHI_UI_Reference_Pack/

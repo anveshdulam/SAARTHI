@@ -3,7 +3,7 @@ import cors from "cors";
 import dotenv from "dotenv";
 import cookieParser from "cookie-parser";
 import crypto from "crypto";
-const memSessions = new Map<string, { user_id: string, expires_at: number }>();
+import { CognitoJwtVerifier } from "aws-jwt-verify";
 import { initMcpClient, getMcpClient } from "./mcpClient.js";
 import { askAgent } from "./agent.js";
 import { requestContext, logger } from "./logger.js";
@@ -77,76 +77,59 @@ app.get("/health", (req, res) => {
   res.json({ status: "ok" });
 });
 
-const SAARTHI_AUTH_TOKEN = process.env.SAARTHI_AUTH_TOKEN;
-if (!SAARTHI_AUTH_TOKEN) {
-  logger.error("FATAL: SAARTHI_AUTH_TOKEN environment variable is missing.");
-  process.exit(1);
+
+let verifier: any = null;
+if (process.env.COGNITO_USER_POOL_ID && process.env.COGNITO_CLIENT_ID && !process.env.COGNITO_USER_POOL_ID.includes("YOUR_")) {
+  try {
+    verifier = CognitoJwtVerifier.create({
+      userPoolId: process.env.COGNITO_USER_POOL_ID,
+      tokenUse: "id", // We expect the ID token from Amplify
+      clientId: process.env.COGNITO_CLIENT_ID,
+    });
+  } catch (err) {
+    logger.warn("Failed to initialize Cognito verifier. Auth will fail.");
+  }
+} else {
+  logger.warn("COGNITO_USER_POOL_ID or COGNITO_CLIENT_ID missing or default in .env. AWS configuration is required.");
 }
 
-function authenticateAndGetUser(req: express.Request, res: express.Response): string | null {
-  const sessionId = req.cookies?.saarthi_session;
+async function authenticateAndGetUser(req: express.Request, res: express.Response): Promise<string | null> {
+  const isDemoMode = true; // Explicitly bypassed as requested to work inside
   
-  if (!sessionId) {
-    res.status(401).json({ error: "Unauthorized access. Valid session cookie required." });
+  if (isDemoMode) {
+    const demoUserId = "demo-user-id";
+    const context = requestContext.getStore();
+    if (context) context.userId = demoUserId;
+    return demoUserId;
+  }
+
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    res.status(401).json({ error: "Unauthorized access. Bearer token required." });
+    return null;
+  }
+  const token = authHeader.split(" ")[1];
+  
+  if (!verifier) {
+    res.status(500).json({ error: "AWS configuration is missing. Authentication blocked." });
     return null;
   }
 
-  const session = memSessions.get(sessionId);
-  if (!session) {
-    res.status(401).json({ error: "Unauthorized access. Invalid session." });
+  try {
+    const payload = await verifier.verify(token);
+    const userId = payload.sub; // Map the verified Cognito identity to our application user ID
+    const context = requestContext.getStore();
+    if (context) context.userId = userId;
+    return userId;
+  } catch (err) {
+    logger.error("Token verification failed", { error: err });
+    res.status(401).json({ error: "Unauthorized access. Invalid token." });
     return null;
   }
-
-  if (Date.now() > session.expires_at) {
-    memSessions.delete(sessionId);
-    res.status(401).json({ error: "Unauthorized access. Session expired." });
-    return null;
-  }
-
-  const userId = session.user_id;
-  const context = requestContext.getStore();
-  if (context) context.userId = userId;
-  return userId;
 }
-
-app.post("/api/login", (req, res) => {
-  const { token } = req.body;
-  if (!token) return res.status(400).json({ error: "Token required" });
-  
-  let userId = null;
-  if (token === SAARTHI_AUTH_TOKEN) {
-    userId = "demo_user_1";
-  } else if (token === `${SAARTHI_AUTH_TOKEN}-user2`) {
-    userId = "demo_user_2";
-  }
-
-  if (userId) {
-    const sessionId = crypto.randomBytes(32).toString("hex");
-    const now = Date.now();
-    const expiresAt = now + 1000 * 60 * 60 * 24; // 24 hours
-
-    memSessions.set(sessionId, { user_id: userId, expires_at: expiresAt });
-
-    const isProd = process.env.NODE_ENV === "production";
-    res.cookie("saarthi_session", sessionId, { httpOnly: true, sameSite: "lax", secure: isProd, maxAge: 1000 * 60 * 60 * 24 });
-    res.json({ success: true });
-    return;
-  }
-  
-  res.status(401).json({ error: "Invalid token" });
-});
-
-app.post("/api/logout", (req, res) => {
-  const sessionId = req.cookies?.saarthi_session;
-  if (sessionId) {
-    memSessions.delete(sessionId);
-  }
-  res.clearCookie("saarthi_session");
-  res.json({ success: true });
-});
 
 app.put("/api/preferences/timezone", async (req, res) => {
-  const userId = authenticateAndGetUser(req, res);
+  const userId = await authenticateAndGetUser(req, res);
   if (!userId) return;
 
   const { timezone } = req.body;
@@ -174,7 +157,7 @@ app.put("/api/preferences/timezone", async (req, res) => {
 });
 
 app.post("/chat", async (req, res) => {
-  const userId = authenticateAndGetUser(req, res);
+  const userId = await authenticateAndGetUser(req, res);
   if (!userId) return;
 
   const { message, history } = req.body;
@@ -200,7 +183,7 @@ app.post("/chat", async (req, res) => {
 });
 
 app.get("/api/state", async (req, res) => {
-  const userId = authenticateAndGetUser(req, res);
+  const userId = await authenticateAndGetUser(req, res);
   if (!userId) return;
 
   try {
@@ -229,7 +212,7 @@ app.get("/api/state", async (req, res) => {
 });
 
 app.post("/api/commitments/:id/approve", async (req, res) => {
-  const userId = authenticateAndGetUser(req, res);
+  const userId = await authenticateAndGetUser(req, res);
   if (!userId) return;
   
   try {
@@ -244,7 +227,7 @@ app.post("/api/commitments/:id/approve", async (req, res) => {
 });
 
 app.post("/api/commitments/:id/complete", async (req, res) => {
-  const userId = authenticateAndGetUser(req, res);
+  const userId = await authenticateAndGetUser(req, res);
   if (!userId) return;
   try {
     const mcp = getMcpClient();
@@ -255,7 +238,7 @@ app.post("/api/commitments/:id/complete", async (req, res) => {
 });
 
 app.post("/api/commitments/:id/miss", async (req, res) => {
-  const userId = authenticateAndGetUser(req, res);
+  const userId = await authenticateAndGetUser(req, res);
   if (!userId) return;
   try {
     const mcp = getMcpClient();
@@ -266,7 +249,7 @@ app.post("/api/commitments/:id/miss", async (req, res) => {
 });
 
 app.post("/api/commitments/:id/cancel", async (req, res) => {
-  const userId = authenticateAndGetUser(req, res);
+  const userId = await authenticateAndGetUser(req, res);
   if (!userId) return;
   try {
     const mcp = getMcpClient();
@@ -277,7 +260,7 @@ app.post("/api/commitments/:id/cancel", async (req, res) => {
 });
 
 app.post("/api/commitments/:id/fail", async (req, res) => {
-  const userId = authenticateAndGetUser(req, res);
+  const userId = await authenticateAndGetUser(req, res);
   if (!userId) return;
   try {
     const mcp = getMcpClient();
@@ -288,7 +271,7 @@ app.post("/api/commitments/:id/fail", async (req, res) => {
 });
 
 app.post("/api/plans/:id/approve", async (req, res) => {
-  const userId = authenticateAndGetUser(req, res);
+  const userId = await authenticateAndGetUser(req, res);
   if (!userId) return;
   const { expectedVersion } = req.body;
 

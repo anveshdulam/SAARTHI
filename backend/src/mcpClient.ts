@@ -45,9 +45,17 @@ export const initMcpClient = async () => {
       const duration_ms = performance.now() - start;
       logger.info("MCP Tool request completed", { operation: "mcp.tool", duration_ms, tool_name: request.name, success: true });
       return res;
-    } catch (error) {
+    } catch (error: any) {
       const duration_ms = performance.now() - start;
       logger.error("MCP Tool execution failed", { operation: "mcp.tool", duration_ms, tool_name: request.name, success: false, error });
+      
+      const isSessionError = error?.message?.includes("Session not found") || error?.message?.includes("404") || error?.error_code === 404;
+      if (isSessionError) {
+        logger.info("MCP session expired/evicted. Reconnecting MCP client and retrying tool call...");
+        mcpClient = null;
+        await initMcpClient();
+        return mcpClient!.callTool(request, ...args);
+      }
       throw error;
     }
   };

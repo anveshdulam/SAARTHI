@@ -1,7 +1,15 @@
 import { useState, useEffect } from 'react';
 
+export interface ChatMessage {
+  role: 'user' | 'agent';
+  content: string;
+  toolsExecuted?: string[];
+  requestId?: string;
+  isError?: boolean;
+}
+
 export function useSaarthiState() {
-  const [messages, setMessages] = useState<{role: string, content: string}[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [intelligenceStep, setIntelligenceStep] = useState<string | null>(null);
@@ -10,21 +18,26 @@ export function useSaarthiState() {
     commitments: [], events: [], constraints: [], plans: [], plan_blocks: []
   });
 
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(true);
+
+  const getAuthHeaders = async (baseHeaders: Record<string, string> = {}) => {
+    // Explicitly bypassed as requested so user works inside seamlessly
+    return { ...baseHeaders, Authorization: `Bearer demo-token` };
+  };
 
   const fetchState = async () => {
     try {
-      const res = await fetch("http://localhost:3001/api/state", { credentials: "include" });
+      const headers = await getAuthHeaders();
+      const res = await fetch("http://localhost:3001/api/state", { headers });
       if (res.ok) {
         setIsAuthenticated(true);
         const data = await res.json();
         setStateData(data);
       } else {
-        setIsAuthenticated(false);
+        console.warn("Could not fetch state from backend:", res.status);
       }
     } catch (e) {
       console.error("Failed to fetch state:", e);
-      setIsAuthenticated(false);
     }
   };
 
@@ -34,8 +47,7 @@ export function useSaarthiState() {
       if (tz) {
         await fetch("http://localhost:3001/api/preferences/timezone", {
           method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
+          headers: await getAuthHeaders({ "Content-Type": "application/json" }),
           body: JSON.stringify({ timezone: tz })
         });
       }
@@ -71,8 +83,7 @@ export function useSaarthiState() {
     try {
       const response = await fetch("http://localhost:3001/chat", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
+        headers: await getAuthHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ message: text.trim(), history: messages.filter(m => m.role !== 'agent') })
       });
       
@@ -88,14 +99,30 @@ export function useSaarthiState() {
       if (!response.ok || !data.success) {
         const errCode = data.errorCode || "NETWORK_ERROR";
         const replyMsg = data.reply || data.error || "System failure.";
-        setMessages(prev => [...prev, { role: "agent", content: `❌ Execution Failed\n\n[${errCode}]\n${replyMsg}\n\nRequest ID: ${reqId}` }]);
+        setMessages(prev => [...prev, { 
+          role: "agent", 
+          content: `❌ Execution Failed\n\n[${errCode}]\n${replyMsg}\n\nRequest ID: ${reqId}`,
+          toolsExecuted: data.toolsExecuted || [],
+          requestId: reqId,
+          isError: true
+        }]);
       } else {
-        setMessages(prev => [...prev, { role: "agent", content: data.reply || "Done." }]);
+        setMessages(prev => [...prev, { 
+          role: "agent", 
+          content: data.reply || "Done.",
+          toolsExecuted: data.toolsExecuted || [],
+          requestId: reqId,
+          isError: false
+        }]);
       }
       
       fetchState();
     } catch (err: any) {
-      setMessages(prev => [...prev, { role: "agent", content: `❌ Network or System Error\n\n[NETWORK_ERROR]\n${err.message || "Could not reach the execution engine."}` }]);
+      setMessages(prev => [...prev, { 
+        role: "agent", 
+        content: `❌ Network or System Error\n\n[NETWORK_ERROR]\n${err.message || "Could not reach the execution engine."}`,
+        isError: true
+      }]);
     } finally {
       setLoading(false);
       setIntelligenceStep(null);
@@ -106,7 +133,10 @@ export function useSaarthiState() {
     if (loading) return;
     setLoading(true);
     try {
-      const response = await fetch(`http://localhost:3001/api/commitments/${id}/approve`, { method: "POST", credentials: "include" });
+      const response = await fetch(`http://localhost:3001/api/commitments/${id}/approve`, { 
+        method: "POST", 
+        headers: await getAuthHeaders() 
+      });
       const reqId = response.headers.get("X-Request-ID") || "unknown";
       
       let data;
@@ -131,7 +161,8 @@ export function useSaarthiState() {
     setLoading(true);
     try {
       const response = await fetch(`http://localhost:3001/api/plans/${id}/approve`, {
-        method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
+        method: "POST", 
+        headers: await getAuthHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ expectedVersion: version })
       });
       const reqId = response.headers.get("X-Request-ID") || "unknown";

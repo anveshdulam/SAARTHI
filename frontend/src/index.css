@@ -255,7 +255,6 @@ h1, h2, h3, h4, h5, h6 {
   font-family: var(--font-serif);
   font-weight: 500;
   letter-spacing: -0.01em;
-}
   line-height: var(--lh-tight);
   color: var(--text-primary);
 }
@@ -457,6 +456,12 @@ h1, h2, h3, h4, h5, h6 {
   }
   .app-shell.mobile-open .sidebar {
     left: 0;
+  }
+}
+
+@media (max-width: 768px) {
+  .hide-on-mobile {
+    display: none !important;
   }
 }
 

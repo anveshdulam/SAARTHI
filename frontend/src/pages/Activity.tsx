@@ -5,12 +5,11 @@ import { LandingPage } from './LandingPage';
 
 export function Activity() {
   const { isAuthenticated, fetchState, stateData } = useSaarthiState();
+  const [filter, setFilter] = useState('ALL');
+  const filters = ['ALL', 'COMMITMENTS', 'PLANS', 'APPROVALS', 'MEMORY', 'SYSTEM'];
 
   if (isAuthenticated === null) return null;
   if (isAuthenticated === false) return <LandingPage onLogin={fetchState} />;
-  
-  const [filter, setFilter] = useState('ALL');
-  const filters = ['ALL', 'COMMITMENTS', 'PLANS', 'APPROVALS', 'MEMORY', 'SYSTEM'];
 
   return (
     <MainLayout>
@@ -59,7 +58,7 @@ export function Activity() {
           <div style={{ padding: '40px 32px', background: 'var(--workspace-bg)' }}>
             <div style={{ position: 'relative', borderLeft: '2px solid var(--workspace-border)', paddingLeft: '32px', display: 'flex', flexDirection: 'column', gap: '40px' }}>
               
-              {stateData.events.slice().reverse().map((e: any, idx: number) => (
+              {stateData.events.slice().reverse().map((e: any) => (
                 <div key={e.id} style={{ position: 'relative' }}>
                   {/* Timeline Dot */}
                   <div style={{ 

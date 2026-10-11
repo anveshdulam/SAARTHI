@@ -471,6 +471,18 @@ const getServer = () => {
         
         // Approve this plan
         db.prepare("UPDATE plans SET status = 'accepted' WHERE id = ?").run(planId);
+        
+        // Apply approved schedule blocks to commitments so schedule updates for user
+        const blocks = db.prepare("SELECT commitment_id, start_time, end_time FROM plan_blocks WHERE plan_id = ?").all(planId) as any[];
+        const updateCommitment = db.prepare(`
+          UPDATE commitments 
+          SET start_time = ?, end_time = ?, status = 'pending', updated_at = ? 
+          WHERE id = ? AND user_id = ?
+        `);
+        for (const b of blocks) {
+          updateCommitment.run(b.start_time, b.end_time, nowIso, b.commitment_id, userId);
+        }
+
         db.prepare("INSERT INTO events (id, user_id, type, entity, plan_version, new_state, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
           .run(crypto.randomUUID(), userId, "PLAN_ACCEPTED", "plan", plan.version, JSON.stringify({ id: planId, status: 'accepted' }), nowIso);
       });
@@ -594,10 +606,8 @@ type SessionState = {
   cleanupTimer?: NodeJS.Timeout;
 };
 
-// 60-second retention policy: The default StreamableHTTPClientTransport uses a max 
-// reconnect backoff of ~30s. A 60-second TTL safely bounds memory while allowing 
-// legitimate SDK reconnections to succeed.
-const SESSION_ABANDONED_TTL_MS = parseInt(process.env.MCP_SESSION_TTL_MS || "60000", 10);
+// Retain sessions for 1 hour to prevent idle evictions during developer & judge sessions
+const SESSION_ABANDONED_TTL_MS = parseInt(process.env.MCP_SESSION_TTL_MS || "3600000", 10);
 
 const sessionRegistry = new Map<string, SessionState>();
 
