@@ -206,14 +206,74 @@ async function runApprovalInvariantsTests() {
 
     console.log("  ✓ Invariant 3 PASS: First approval commits transaction; second approval is rejected idempotently.\n");
 
+    // -------------------------------------------------------------------------
+    // TEST 5: Invariant 5 — Authoritative Plan Rejection Flow
+    // -------------------------------------------------------------------------
+    console.log("[INVARIANT 5] Verifying Plan Rejection & Non-Mutation Flow...");
+    
+    // Create another proposed plan to test rejection
+    const proposalRes2 = await mcp.callTool({
+      name: "create_schedule_proposal",
+      arguments: {
+        userId: testUserId,
+        currentTimeUtc: "2026-10-15T09:00:00.000Z",
+        planningDate: "2026-10-15",
+        cutoffLocalTime: "22:00"
+      }
+    });
+    const proposalJson2 = JSON.parse(proposalRes2.content[0]?.text || "{}");
+    const planId2 = proposalJson2.planId;
+    const planRow2 = db.prepare("SELECT * FROM plans WHERE id = ?").get(planId2) as any;
+
+    // Reject the proposed plan
+    const rejectRes = await mcp.callTool({
+      name: "reject_plan",
+      arguments: {
+        userId: testUserId,
+        planId: planId2,
+        expectedVersion: planRow2.version,
+        reason: "User rejected proposal"
+      }
+    });
+
+    if (rejectRes.isError) {
+      throw new Error(`reject_plan failed: ${rejectRes.content[0]?.text}`);
+    }
+
+    const rejectedPlan = db.prepare("SELECT * FROM plans WHERE id = ?").get(planId2) as any;
+    if (rejectedPlan.status !== "rejected") {
+      throw new Error(`Expected plan status 'rejected', found '${rejectedPlan.status}'`);
+    }
+
+    // Verify PLAN_REJECTED audit event recorded
+    const rejectEvent = db.prepare("SELECT * FROM events WHERE user_id = ? AND type = 'PLAN_REJECTED'").get(testUserId) as any;
+    if (!rejectEvent) {
+      throw new Error("Audit event PLAN_REJECTED was not recorded in events table.");
+    }
+
+    // Ensure rejected plan cannot subsequently be approved
+    const approveRejectedRes = await mcp.callTool({
+      name: "approve_plan",
+      arguments: {
+        userId: testUserId,
+        planId: planId2,
+        expectedVersion: planRow2.version
+      }
+    });
+    if (!approveRejectedRes.isError) {
+      throw new Error("SECURITY VIOLATION: Approving an already rejected plan succeeded!");
+    }
+
+    console.log("  ✓ Invariant 5 PASS: Rejection sets status to 'rejected', logs audit event, and locks out approval.\n");
+
     // Clean up test data
     db.prepare("DELETE FROM events WHERE user_id = ?").run(testUserId);
-    db.prepare("DELETE FROM plan_blocks WHERE plan_id = ?").run(planId);
+    db.prepare("DELETE FROM plan_blocks WHERE plan_id IN (?, ?)").run(planId, planId2);
     db.prepare("DELETE FROM plans WHERE user_id = ?").run(testUserId);
     db.prepare("DELETE FROM commitments WHERE user_id = ?").run(testUserId);
 
     console.log("============================================================");
-    console.log("  ALL APPROVAL-BOUNDARY & SAFETY INVARIANT TESTS PASSED (4/4)");
+    console.log("  ALL APPROVAL-BOUNDARY & SAFETY INVARIANT TESTS PASSED (5/5)");
     console.log("============================================================\n");
     process.exit(0);
   } catch (err: any) {

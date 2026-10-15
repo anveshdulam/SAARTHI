@@ -190,11 +190,11 @@ export async function askAgent(userId: string, userMessage: string, history: Mes
       // Log failure event
       await recordAgentEvent(userId, "EXECUTION_ERROR", "agent", JSON.stringify({ error: errorCode, details: error.message }));
 
-      if (userMsgLower.includes("missed") || userMsgLower.includes("change")) {
+      if (userMsgLower.includes("missed") || userMsgLower.includes("change") || userMsgLower.includes("replan") || userMsgLower.includes("fix") || userMsgLower.includes("schedule")) {
         try {
           await mcp.callTool({ name: "assess_commitment_risk", arguments: { userId, currentTime: currentTimeUtcStr } });
           executedTools.push("assess_commitment_risk");
-          await mcp.callTool({ 
+          const planRes: any = await mcp.callTool({ 
             name: "create_schedule_proposal", 
             arguments: { 
               userId, 
@@ -204,8 +204,22 @@ export async function askAgent(userId: string, userMessage: string, history: Mes
             } 
           });
           executedTools.push("create_schedule_proposal");
-          actionPerformed = true; // generated a proposal
-          simulatedReply += "I've detected the intent to replan. I am replanning your schedule based on the real database commitments.";
+          actionPerformed = true;
+
+          let planVersion = 1;
+          let totalBlocks = 0;
+          let explanation = "Rescheduled past-due sessions while preserving your 10 PM cutoff.";
+          try {
+            const rawPlanText = planRes.content?.find((c: any) => c.type === 'text')?.text || "{}";
+            const planObj = JSON.parse(rawPlanText);
+            if (planObj.version) planVersion = planObj.version;
+            if (planObj.totalScheduledBlocks) totalBlocks = planObj.totalScheduledBlocks;
+            if (planObj.explanation) explanation = planObj.explanation;
+          } catch {
+            // keep defaults
+          }
+
+          simulatedReply += `I assessed your schedule risks and generated proposed schedule Plan v${planVersion} (${totalBlocks} blocks). ${explanation}\n\nPlease review and authorize this proposal on the Living Plans page.`;
           fallbackSuccess = true;
         } catch (e: any) {
           logger.error("Fallback tool execution failed", { error: e, tool_name: "create_schedule_proposal" });
@@ -213,9 +227,21 @@ export async function askAgent(userId: string, userMessage: string, history: Mes
         }
       } else {
         try {
-          await mcp.callTool({ name: "list_commitments", arguments: { userId } });
+          const commsRes: any = await mcp.callTool({ name: "list_commitments", arguments: { userId } });
           executedTools.push("list_commitments");
-          simulatedReply += "I am listening and maintaining your actual commitments from the database.";
+          const constraintsRes: any = await mcp.callTool({ name: "list_constraints", arguments: { userId } });
+          executedTools.push("list_constraints");
+          
+          let commCount = 0;
+          let constraintCount = 0;
+          try {
+            const comms = JSON.parse(commsRes.content?.find((c: any) => c.type === 'text')?.text || "[]");
+            const constraints = JSON.parse(constraintsRes.content?.find((c: any) => c.type === 'text')?.text || "[]");
+            commCount = comms.length;
+            constraintCount = constraints.length;
+          } catch {}
+
+          simulatedReply += `You currently have ${commCount} active commitments and ${constraintCount} stored constraints in your living schedule model.`;
           fallbackSuccess = true;
         } catch (e: any) {
           logger.error("Fallback tool execution failed", { error: e, tool_name: "list_commitments" });

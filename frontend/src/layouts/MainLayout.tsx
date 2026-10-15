@@ -7,21 +7,22 @@ export function MainLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className={`app-shell ${mobileOpen ? 'mobile-open' : ''}`}>
-      <Sidebar />
-      <div className="main-content-area workspace-light">
-        <Topbar />
-        <div className="workspace-scroll">
-          {children}
-        </div>
-      </div>
+      {/* Mobile Backdrop */}
+      {mobileOpen && (
+        <div 
+          className="mobile-backdrop" 
+          onClick={() => setMobileOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
+      <Sidebar onCloseMobile={() => setMobileOpen(false)} />
       
-      {/* Mobile toggle button if needed */}
-      <div 
-        style={{position: 'fixed', bottom: '16px', right: '16px', zIndex: 999, display: 'none'}} 
-        className="mobile-toggle"
-        onClick={() => setMobileOpen(!mobileOpen)}
-      >
-        Menu
+      <div className="main-content-area workspace-light">
+        <Topbar mobileOpen={mobileOpen} onToggleMobile={() => setMobileOpen(!mobileOpen)} />
+        <main className="workspace-scroll">
+          {children}
+        </main>
       </div>
     </div>
   );

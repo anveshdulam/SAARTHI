@@ -29,6 +29,11 @@ export function Alexa() {
     ? stateData.plan_blocks?.filter((b: any) => b.plan_id === proposedPlan.id) 
     : [];
 
+  const cutoffConstraint = stateData.constraints?.find((c: any) => c.type === 'time_limit');
+  const cutoffDisplay = cutoffConstraint 
+    ? `${cutoffConstraint.value} (${cutoffConstraint.description || 'Time Limit'})` 
+    : '22:00 (No study after 10 PM)';
+
   const heroPreset = "I missed my 2 PM study session. Fix my schedule.";
 
   const SpeechRecognition = typeof window !== 'undefined' 
@@ -356,10 +361,23 @@ export function Alexa() {
                       Protected Cutoff
                     </div>
                     <div style={{ fontSize: '16px', fontWeight: 600, color: 'var(--text-primary-light)', marginTop: '2px' }}>
-                      22:00 (No study after 10 PM)
+                      {cutoffDisplay}
                     </div>
                   </div>
                 </div>
+
+                {stateData.constraints && stateData.constraints.length > 0 && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px', marginBottom: '14px' }}>
+                    <span style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-muted-light)', fontWeight: 600, marginRight: '4px' }}>
+                      Enforced Invariants:
+                    </span>
+                    {stateData.constraints.map((c: any) => (
+                      <span key={c.id} className="badge warning" style={{ fontSize: '11px', padding: '2px 8px' }}>
+                        {c.description || `${c.type}: ${c.value}`}
+                      </span>
+                    ))}
+                  </div>
+                )}
 
                 <div style={{ fontSize: '12px', color: 'var(--text-secondary-light)', lineHeight: 1.5 }}>
                   Per system design, schedule modifications require explicit user authorization. Review the side-by-side diff in Living Plans before approving.
@@ -517,9 +535,11 @@ export function Alexa() {
               onClick={toggleListening}
               disabled={loading}
               title={isListening ? "Listening... Click to stop" : "Speak your command"}
+              aria-label={isListening ? "Stop voice listening" : "Start voice listening"}
               style={{
-                width: '38px',
-                height: '38px',
+                width: '44px',
+                height: '44px',
+                minHeight: '44px',
                 borderRadius: '8px',
                 border: 'none',
                 background: isListening ? 'var(--saffron)' : 'var(--workspace-elevated)',
@@ -542,6 +562,7 @@ export function Alexa() {
             <input 
               type="text" 
               placeholder={isListening ? "Listening... Speak your command..." : "Instruct SAARTHI (e.g. 'I missed my 2 PM study session. Fix my schedule.')..."} 
+              aria-label="Agent instruction prompt"
               value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && handleSend()}
@@ -559,22 +580,24 @@ export function Alexa() {
             />
 
             <button 
-              className="button primary" 
+              className="button primary touch-target" 
               onClick={() => handleSend()}
               disabled={loading || !input.trim()}
+              aria-label="Execute instruction"
               style={{ 
-                padding: '0 18px', 
-                height: '38px',
+                padding: '0 20px', 
+                height: '44px',
+                minHeight: '44px',
                 borderRadius: '8px',
                 fontWeight: 600,
                 display: 'flex',
                 alignItems: 'center',
                 gap: '6px',
-                fontSize: '13px',
+                fontSize: '13.5px',
                 flexShrink: 0
               }}
             >
-              Execute
+              <span>Execute</span>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <line x1="22" y1="2" x2="11" y2="13"></line>
                 <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>

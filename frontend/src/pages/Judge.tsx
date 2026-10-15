@@ -22,7 +22,7 @@ interface ProtocolAuditData {
 }
 
 export function Judge() {
-  const { isAuthenticated, fetchState, stateData } = useSaarthiState();
+  const { isAuthenticated, fetchState, stateData, getAuthHeaders } = useSaarthiState();
   const [auditData, setAuditData] = useState<ProtocolAuditData | null>(null);
   const [loadingAudit, setLoadingAudit] = useState(false);
   const [selectedTool, setSelectedTool] = useState<any | null>(null);
@@ -32,8 +32,9 @@ export function Judge() {
   const fetchAudit = async () => {
     setLoadingAudit(true);
     try {
+      const headers = await getAuthHeaders();
       const res = await fetch('http://localhost:3001/api/audit/protocol', {
-        headers: { Authorization: 'Bearer demo-token' }
+        headers
       });
       if (res.ok) {
         const data = await res.json();
@@ -79,10 +80,10 @@ export function Judge() {
             </div>
             <div style={{ display: 'flex', gap: '10px' }}>
               <button 
-                className="button secondary"
+                className="button secondary touch-target"
                 onClick={fetchAudit}
                 disabled={loadingAudit}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '13px' }}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '13px', minHeight: '44px' }}
               >
                 <span>🔄</span>
                 <span>{loadingAudit ? 'Pinging MCP...' : 'Ping Telemetry'}</span>

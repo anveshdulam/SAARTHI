@@ -222,6 +222,15 @@ const getServer = () => {
           }
         },
         {
+          name: "reject_plan",
+          description: "Reject a proposed schedule plan with optimistic concurrency.",
+          inputSchema: {
+            type: "object",
+            properties: { userId: { type: "string" }, planId: { type: "string" }, expectedVersion: { type: "number" }, reason: { type: "string" } },
+            required: ["userId", "planId", "expectedVersion"]
+          }
+        },
+        {
           name: "complete_commitment",
           description: "Mark a pending commitment as completed.",
           inputSchema: {
@@ -490,6 +499,37 @@ const getServer = () => {
       try {
         withDbLatency("db.plan.approve", () => tx());
         return { content: [{ type: "text", text: `Plan v${plan.version} accepted successfully.` }] };
+      } catch (err: any) {
+        return { content: [{ type: "text", text: `Transaction Error: ${err.message}` }], isError: true };
+      }
+    }
+
+    if (name === "reject_plan") {
+      const RejectPlanArgs = z.object({
+        userId: z.string(),
+        planId: z.string(),
+        expectedVersion: z.number(),
+        reason: z.string().optional()
+      });
+      const parsed = RejectPlanArgs.safeParse(rawArgs);
+      if (!parsed.success) return { content: [{ type: "text", text: `Validation Error: ${parsed.error.message}` }], isError: true };
+      const { userId, planId, expectedVersion, reason } = parsed.data;
+
+      const plan = db.prepare("SELECT version, status FROM plans WHERE id = ? AND user_id = ?").get(planId, userId) as any;
+      if (!plan) return { content: [{ type: "text", text: "Plan not found." }], isError: true };
+      if (plan.status !== 'proposed') return { content: [{ type: "text", text: `Plan is already ${plan.status}.` }], isError: true };
+      if (plan.version !== expectedVersion) return { content: [{ type: "text", text: `Concurrency Error: Stale plan. Expected v${expectedVersion}, found v${plan.version}.` }], isError: true };
+
+      const tx = db.transaction(() => {
+        const nowIso = new Date().toISOString();
+        db.prepare("UPDATE plans SET status = 'rejected' WHERE id = ?").run(planId);
+        db.prepare("INSERT INTO events (id, user_id, type, entity, plan_version, new_state, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+          .run(crypto.randomUUID(), userId, "PLAN_REJECTED", "plan", plan.version, JSON.stringify({ id: planId, status: 'rejected', reason: reason || 'User rejected proposed schedule' }), nowIso);
+      });
+
+      try {
+        withDbLatency("db.plan.reject", () => tx());
+        return { content: [{ type: "text", text: `Plan v${plan.version} rejected.` }] };
       } catch (err: any) {
         return { content: [{ type: "text", text: `Transaction Error: ${err.message}` }], isError: true };
       }

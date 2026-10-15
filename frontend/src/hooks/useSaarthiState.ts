@@ -174,11 +174,69 @@ export function useSaarthiState() {
         const errCode = data.errorCode || "NETWORK_ERROR";
         const replyMsg = data.reply || data.error || "Plan approval failed.";
         setMessages(prev => [...prev, { role: "agent", content: `❌ Plan Approval Failed\n\n[${errCode}]\n${replyMsg}\n\nRequest ID: ${reqId}` }]);
+      } else {
+        setMessages(prev => [...prev, { 
+          role: "agent", 
+          content: `✅ Plan v${version} Approved & Committed\n\nYour living schedule has been updated in the database. All commitments are synchronized.`,
+          requestId: reqId
+        }]);
       }
       
       fetchState();
     } catch (err: any) {
       setMessages(prev => [...prev, { role: "agent", content: `❌ Network Error\n\n[NETWORK_ERROR]\n${err.message || "Failed to reach server."}` }]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRejectPlan = async (id: string, version: number, reason?: string) => {
+    if (loading) return;
+    setLoading(true);
+    try {
+      const response = await fetch(`http://localhost:3001/api/plans/${id}/reject`, {
+        method: "POST", 
+        headers: await getAuthHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ expectedVersion: version, reason: reason || "User rejected proposed schedule" })
+      });
+      const reqId = response.headers.get("X-Request-ID") || "unknown";
+      
+      let data;
+      try { data = await response.json(); } catch (e) { throw new Error("Invalid server response format."); }
+      
+      if (!response.ok || (data.success === false)) {
+        const errCode = data.errorCode || "NETWORK_ERROR";
+        const replyMsg = data.reply || data.error || "Plan rejection failed.";
+        setMessages(prev => [...prev, { role: "agent", content: `❌ Plan Rejection Failed\n\n[${errCode}]\n${replyMsg}\n\nRequest ID: ${reqId}` }]);
+      } else {
+        setMessages(prev => [...prev, { 
+          role: "agent", 
+          content: `⚠️ Plan v${version} Rejected\n\nThe proposed schedule was dismissed. Existing commitments remain unchanged.`,
+          requestId: reqId
+        }]);
+      }
+      
+      fetchState();
+    } catch (err: any) {
+      setMessages(prev => [...prev, { role: "agent", content: `❌ Network Error\n\n[NETWORK_ERROR]\n${err.message || "Failed to reach server."}` }]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCompleteCommitment = async (id: string) => {
+    if (loading) return;
+    setLoading(true);
+    try {
+      const response = await fetch(`http://localhost:3001/api/commitments/${id}/complete`, {
+        method: "POST",
+        headers: await getAuthHeaders()
+      });
+      if (response.ok) {
+        await fetchState();
+      }
+    } catch (err) {
+      console.error("Failed to complete commitment:", err);
     } finally {
       setLoading(false);
     }
@@ -196,6 +254,9 @@ export function useSaarthiState() {
     stateData,
     handleSend,
     handleApproveCommitment,
-    handleApprovePlan
+    handleApprovePlan,
+    handleRejectPlan,
+    handleCompleteCommitment,
+    getAuthHeaders
   };
 }

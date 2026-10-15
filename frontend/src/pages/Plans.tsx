@@ -5,7 +5,7 @@ import { LivingPlan } from '../components/LivingPlan';
 import { LandingPage } from './LandingPage';
 
 export function Plans() {
-  const { isAuthenticated, fetchState, stateData, handleApprovePlan, loading } = useSaarthiState();
+  const { isAuthenticated, fetchState, stateData, handleApprovePlan, handleRejectPlan, loading } = useSaarthiState();
   const [activeTab, setActiveTab] = useState<'timeline' | 'diff'>('timeline');
 
   if (isAuthenticated === null) return null;
@@ -65,7 +65,13 @@ export function Plans() {
                 <div style={{ fontWeight: 600, color: 'var(--text-primary-light)', marginBottom: '4px' }}>
                   Enforced Constraints & Invariants
                 </div>
-                <div>• Hard Cutoff: <strong>22:00</strong> (No study after 10 PM)</div>
+                {stateData.constraints && stateData.constraints.length > 0 ? (
+                  stateData.constraints.map((c: any) => (
+                    <div key={c.id}>• {c.type === 'time_limit' ? 'Hard Cutoff' : 'Rule'}: <strong>{c.value}</strong> ({c.description})</div>
+                  ))
+                ) : (
+                  <div>• Hard Cutoff: <strong>22:00</strong> (No study after 10 PM)</div>
+                )}
                 <div>• Scheduled Blocks: <strong>{currentPlanBlocks.length} commitments</strong></div>
                 <div>• Optimistic Concurrency Lock: <strong>v{proposedPlan.version}</strong></div>
               </div>
@@ -73,7 +79,7 @@ export function Plans() {
 
             <div style={{ display: 'flex', gap: '12px', marginTop: '28px', flexWrap: 'wrap' }}>
               <button 
-                className="button primary"
+                className="button primary touch-target"
                 disabled={loading}
                 onClick={() => handleApprovePlan(proposedPlan.id, proposedPlan.version)}
                 style={{
@@ -81,7 +87,8 @@ export function Plans() {
                   alignItems: 'center',
                   gap: '8px',
                   padding: '10px 22px',
-                  fontWeight: 600
+                  fontWeight: 600,
+                  minHeight: '44px'
                 }}
               >
                 {loading ? (
@@ -98,9 +105,34 @@ export function Plans() {
                   </>
                 )}
               </button>
+
               <button 
-                className="button ghost"
+                className="button touch-target"
+                disabled={loading}
+                onClick={() => {
+                  if (window.confirm(`Reject proposed schedule Plan v${proposedPlan.version}? Your commitments will remain in their prior state.`)) {
+                    handleRejectPlan(proposedPlan.id, proposedPlan.version, "User dismissed proposed schedule");
+                  }
+                }}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '10px 18px',
+                  minHeight: '44px',
+                  background: 'var(--danger-subtle)',
+                  color: 'var(--danger)',
+                  border: '1px solid var(--danger-border)'
+                }}
+              >
+                <span>Reject Proposal</span>
+                <span>✕</span>
+              </button>
+
+              <button 
+                className="button ghost touch-target"
                 onClick={() => setActiveTab(activeTab === 'diff' ? 'timeline' : 'diff')}
+                style={{ minHeight: '44px' }}
               >
                 {activeTab === 'diff' ? 'View Timeline' : 'View Changes Diff'}
               </button>

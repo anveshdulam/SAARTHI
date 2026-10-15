@@ -464,15 +464,69 @@ h1, h2, h3, h4, h5, h6 {
     top: 0;
     bottom: 0;
     transition: left var(--transition-slow);
+    z-index: 1000;
+    box-shadow: 4px 0 24px rgba(0,0,0,0.4);
   }
   .app-shell.mobile-open .sidebar {
     left: 0;
   }
+  .mobile-nav-toggle {
+    display: inline-flex !important;
+  }
+}
+
+.mobile-nav-toggle {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  background: none;
+  border: none;
+  color: var(--text-primary-light);
+  cursor: pointer;
+  padding: 0;
+  border-radius: 8px;
+}
+
+.mobile-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(2px);
+  z-index: 999;
 }
 
 @media (max-width: 768px) {
   .hide-on-mobile {
     display: none !important;
+  }
+  .landing-mockup-sidebar {
+    display: none !important;
+  }
+  .landing-mockup-preview {
+    height: auto !important;
+    min-height: 380px !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .workspace-scroll {
+    padding: 16px 12px !important;
+  }
+  .topbar {
+    padding: 0 12px !important;
+  }
+  .card {
+    padding: 20px 16px !important;
+    border-radius: var(--radius-lg) !important;
+  }
+  .editorial-heading {
+    font-size: clamp(1.75rem, 5vw, 2.25rem) !important;
+  }
+  .touch-target {
+    min-height: 44px !important;
+    min-width: 44px !important;
   }
 }
 

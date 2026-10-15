@@ -4,7 +4,7 @@ import { MainLayout } from '../layouts/MainLayout';
 import { LandingPage } from './LandingPage';
 
 export function Memory() {
-  const { isAuthenticated, fetchState, stateData } = useSaarthiState();
+  const { isAuthenticated, fetchState, stateData, getAuthHeaders } = useSaarthiState();
   const [newDesc, setNewDesc] = useState('');
   const [newType, setNewType] = useState<'time_limit' | 'recurring_habit' | 'preference'>('time_limit');
   const [newValue, setNewValue] = useState('');
@@ -19,12 +19,10 @@ export function Memory() {
     setSaving(true);
     setSaveError(null);
     try {
+      const headers = await getAuthHeaders({ 'Content-Type': 'application/json' });
       const res = await fetch('http://localhost:3001/api/constraints', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: 'Bearer demo-token'
-        },
+        headers,
         body: JSON.stringify({ type, value, description })
       });
       if (!res.ok) {

@@ -217,11 +217,12 @@ export function LandingPage({ onLogin }: { onLogin: () => void }) {
         <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' }}>
           
           <h1 className="editorial-heading" style={{ 
-            fontSize: '4.5rem', 
+            fontSize: 'clamp(2.5rem, 6vw, 4.5rem)', 
             color: '#2C2A28', 
             marginBottom: 'var(--sp-24)',
             maxWidth: '800px',
-            lineHeight: 1.1
+            lineHeight: 1.1,
+            overflowWrap: 'break-word'
           }}>
             From Intention to Action.
           </h1>
@@ -246,7 +247,7 @@ export function LandingPage({ onLogin }: { onLogin: () => void }) {
           </div>
           
           {/* Detailed Product Preview */}
-          <div style={{ 
+          <div className="landing-mockup-preview" style={{ 
             marginTop: '80px', 
             width: '100%', 
             maxWidth: '1100px', 
@@ -260,7 +261,7 @@ export function LandingPage({ onLogin }: { onLogin: () => void }) {
             textAlign: 'left'
           }}>
             {/* Fake Sidebar */}
-            <div style={{ width: '220px', backgroundColor: 'var(--sidebar-bg)', borderRight: '1px solid var(--dark-border)', display: 'flex', flexDirection: 'column' }}>
+            <div className="landing-mockup-sidebar" style={{ width: '220px', backgroundColor: 'var(--sidebar-bg)', borderRight: '1px solid var(--dark-border)', display: 'flex', flexDirection: 'column' }}>
               <div style={{ padding: '24px' }}>
                 <BrandLogo className="opacity-70" />
               </div>
@@ -347,12 +348,12 @@ export function LandingPage({ onLogin }: { onLogin: () => void }) {
 
       {/* Footer */}
       <footer style={{ padding: '60px 20px', borderTop: '1px solid #E5E2D9', display: 'flex', justifyContent: 'center', color: '#8C8882', backgroundColor: '#FDFBF7' }}>
-        <div style={{ maxWidth: '1100px', width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ maxWidth: '1100px', width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
           <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
             <BrandLogo />
             <span style={{ fontSize: '13px' }}>© 2026</span>
           </div>
-          <div style={{ display: 'flex', gap: '24px', fontSize: '13px' }}>
+          <div style={{ display: 'flex', gap: '24px', fontSize: '13px', flexWrap: 'wrap' }}>
             <a href="#">Privacy</a>
             <a href="#">Terms</a>
             <a href="#">System Status</a>

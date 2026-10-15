@@ -94,21 +94,20 @@ if (process.env.COGNITO_USER_POOL_ID && process.env.COGNITO_CLIENT_ID && !proces
 }
 
 async function authenticateAndGetUser(req: express.Request, res: express.Response): Promise<string | null> {
-  const isDemoMode = true; // Explicitly bypassed as requested to work inside
-  
-  if (isDemoMode) {
-    const demoUserId = "demo-user-id";
-    const context = requestContext.getStore();
-    if (context) context.userId = demoUserId;
-    return demoUserId;
-  }
-
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
     res.status(401).json({ error: "Unauthorized access. Bearer token required." });
     return null;
   }
   const token = authHeader.split(" ")[1];
+
+  const isDemoMode = process.env.DEMO_MODE === "true";
+  if (isDemoMode && (token === "demo-token" || token === (process.env.SAARTHI_AUTH_TOKEN || "demo-token"))) {
+    const demoUserId = "demo-user-id";
+    const context = requestContext.getStore();
+    if (context) context.userId = demoUserId;
+    return demoUserId;
+  }
   
   if (!verifier) {
     res.status(500).json({ error: "AWS configuration is missing. Authentication blocked." });
@@ -339,6 +338,22 @@ app.post("/api/plans/:id/approve", async (req, res) => {
     const result = await mcp.callTool({ name: "approve_plan", arguments: { userId, planId: req.params.id, expectedVersion } });
     if (result.isError) return res.status(400).json({ error: ((result as any).content[0] as any).text });
     res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/plans/:id/reject", async (req, res) => {
+  const userId = await authenticateAndGetUser(req, res);
+  if (!userId) return;
+  const { expectedVersion, reason } = req.body;
+
+  try {
+    const mcp = getMcpClient();
+    if (!mcp) throw new Error("MCP not connected");
+    const result = await mcp.callTool({ name: "reject_plan", arguments: { userId, planId: req.params.id, expectedVersion, reason } });
+    if (result.isError) return res.status(400).json({ error: ((result as any).content[0] as any).text });
+    res.json({ success: true, message: ((result as any).content[0] as any).text });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

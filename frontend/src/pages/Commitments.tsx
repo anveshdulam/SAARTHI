@@ -4,7 +4,7 @@ import { MainLayout } from '../layouts/MainLayout';
 import { LandingPage } from './LandingPage';
 
 export function Commitments() {
-  const { isAuthenticated, fetchState, stateData, handleSend, loading } = useSaarthiState();
+  const { isAuthenticated, fetchState, stateData, handleSend, loading, handleCompleteCommitment } = useSaarthiState();
   const [newTitle, setNewTitle] = useState('');
   const [activeTab, setActiveTab] = useState<'ALL' | 'ACTIVE' | 'AT_RISK' | 'COMPLETED'>('ALL');
   const [selectedCommitment, setSelectedCommitment] = useState<any | null>(null);
@@ -27,20 +27,6 @@ export function Commitments() {
     if (newTitle.trim()) {
       handleSend(`Create a new commitment: ${newTitle}`);
       setNewTitle('');
-    }
-  };
-
-  const handleCompleteCommitment = async (id: string) => {
-    try {
-      const res = await fetch(`http://localhost:3001/api/commitments/${id}/complete`, {
-        method: 'POST',
-        headers: { Authorization: 'Bearer demo-token' }
-      });
-      if (res.ok) {
-        await fetchState();
-      }
-    } catch (err) {
-      console.error('Failed to complete commitment:', err);
     }
   };
 
