@@ -445,8 +445,19 @@ h1, h2, h3, h4, h5, h6 {
   max-width: 1280px;
 }
 
+/* ---- Today Responsive Grid ---- */
+.today-grid {
+  display: grid;
+  grid-template-columns: 1fr 360px;
+  gap: 32px;
+}
+
 @media (max-width: 1024px) {
   .dashboard-grid { grid-template-columns: 1fr; }
+  .today-grid {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
   .sidebar {
     position: fixed;
     left: calc(-1 * var(--sidebar-width));
@@ -560,6 +571,13 @@ h1, h2, h3, h4, h5, h6 {
   transition: all var(--transition-fast);
   white-space: nowrap;
   user-select: none;
+}
+
+.button.touch-target,
+.button.lg {
+  min-height: 44px;
+  padding: 10px 18px;
+  font-size: 14px;
 }
 
 .button:hover:not(:disabled) {

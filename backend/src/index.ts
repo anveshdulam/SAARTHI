@@ -211,6 +211,64 @@ app.get("/api/state", async (req, res) => {
   }
 });
 
+app.get("/api/audit/protocol", async (req, res) => {
+  const userId = await authenticateAndGetUser(req, res);
+  if (!userId) return;
+
+  try {
+    const mcp = getMcpClient();
+    if (!mcp) throw new Error("MCP not connected");
+
+    let toolsList: any[] = [];
+    try {
+      const toolsRes = await mcp.listTools();
+      toolsList = toolsRes.tools || [];
+    } catch (e: any) {
+      logger.error("Failed to list tools for audit", { error: e });
+    }
+
+    let activeSessions = 1;
+    try {
+      const sessRes = await fetch("http://localhost:3002/internal/mcp/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ internalSecret: process.env.INTERNAL_SECRET })
+      });
+      if (sessRes.ok) {
+        const sessData = await sessRes.json();
+        activeSessions = sessData.count || 1;
+      }
+    } catch {
+      // fallback
+    }
+
+    const forbiddenTools = [
+      "approve_commitment", "approve_plan", "reject_commitment", "reject_plan", "cancel_action",
+      "complete_commitment", "miss_commitment", "cancel_commitment", "fail_commitment"
+    ];
+
+    res.json({
+      protocolVersion: "2025-11-25",
+      transport: "Streamable HTTP",
+      mcpEndpoint: "http://localhost:3002/mcp",
+      serverName: "saarthi-mcp-server",
+      serverVersion: "1.0.0",
+      connected: true,
+      activeSessions,
+      forbiddenTools,
+      tools: toolsList.map(t => ({
+        name: t.name,
+        description: t.description,
+        isModelExposed: !forbiddenTools.includes(t.name),
+        category: forbiddenTools.includes(t.name) ? "LIFECYCLE_PROTECTED" : (t.name.startsWith("list_") || t.name.startsWith("get_")) ? "READ_QUERY" : "REASONING_PROPOSAL",
+        inputSchema: t.inputSchema
+      }))
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post("/api/commitments/:id/approve", async (req, res) => {
   const userId = await authenticateAndGetUser(req, res);
   if (!userId) return;
@@ -281,6 +339,34 @@ app.post("/api/plans/:id/approve", async (req, res) => {
     const result = await mcp.callTool({ name: "approve_plan", arguments: { userId, planId: req.params.id, expectedVersion } });
     if (result.isError) return res.status(400).json({ error: ((result as any).content[0] as any).text });
     res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/constraints", async (req, res) => {
+  const userId = await authenticateAndGetUser(req, res);
+  if (!userId) return;
+  const { type, value, description } = req.body;
+
+  if (!value) {
+    return res.status(400).json({ error: "Constraint value is required" });
+  }
+
+  try {
+    const mcp = getMcpClient();
+    if (!mcp) throw new Error("MCP not connected");
+    const result = await mcp.callTool({
+      name: "save_constraint",
+      arguments: {
+        userId,
+        type: type || "preference",
+        value: String(value),
+        description: description ? String(description) : String(value)
+      }
+    });
+    if (result.isError) return res.status(400).json({ error: ((result as any).content[0] as any).text });
+    res.json({ success: true, message: ((result as any).content[0] as any).text });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
