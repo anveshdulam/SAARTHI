@@ -306,43 +306,7 @@ const getServer = () => {
       const parsed = ListCommitmentsArgs.safeParse(rawArgs);
       if (!parsed.success) return { content: [{ type: "text", text: `Validation Error: ${parsed.error.message}` }], isError: true };
       
-      let rows = db.prepare("SELECT * FROM commitments WHERE user_id = ? AND status IN ('proposed', 'pending', 'missed')").all(parsed.data.userId);
-      
-      // Auto-provision initial commitments & constraints for newly registered Cognito users
-      if (rows.length === 0 && parsed.data.userId !== "demo-user-id") {
-        const totalCount = (db.prepare("SELECT count(*) as count FROM commitments WHERE user_id = ?").get(parsed.data.userId) as any)?.count || 0;
-        if (totalCount === 0) {
-          const nowIso = new Date().toISOString();
-          const initialCommitments = [
-            { id: crypto.randomUUID(), title: "Core Focus Block: Deep Work / Study", type: "hard", start_time: new Date(Date.now() + 3600000).toISOString(), end_time: new Date(Date.now() + 7200000).toISOString(), status: "pending", estimated_minutes: 60 },
-            { id: crypto.randomUUID(), title: "Evening Exercise & Walk", type: "soft", start_time: null, end_time: null, status: "pending", estimated_minutes: 45 },
-            { id: crypto.randomUUID(), title: "Review Day & Plan Tomorrow", type: "soft", start_time: null, end_time: null, status: "pending", estimated_minutes: 20 }
-          ];
-          for (const c of initialCommitments) {
-            db.prepare(`
-              INSERT INTO commitments (id, user_id, title, type, start_time, end_time, estimated_minutes, status, created_at, updated_at)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            `).run(c.id, parsed.data.userId, c.title, c.type, c.start_time, c.end_time, c.estimated_minutes, c.status, nowIso, nowIso);
-          }
-          const initialConstraints = [
-            { id: crypto.randomUUID(), type: "time_limit", value: "22:00", description: "No intensive focus work after 10 PM" },
-            { id: crypto.randomUUID(), type: "time_limit", value: "23:30", description: "Sleep by 11:30 PM (Wind-down at 11:00 PM)" }
-          ];
-          for (const con of initialConstraints) {
-            db.prepare(`
-              INSERT INTO constraints (id, user_id, type, value, description, created_at)
-              VALUES (?, ?, ?, ?, ?, ?)
-            `).run(con.id, parsed.data.userId, con.type, con.value, con.description, nowIso);
-          }
-          db.prepare(`
-            INSERT INTO events (id, user_id, type, entity, new_state, created_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-          `).run(crypto.randomUUID(), parsed.data.userId, "USER_INITIALIZED", "system", JSON.stringify({ message: "Default schedule and bedtime constraints initialized" }), nowIso);
-
-          rows = db.prepare("SELECT * FROM commitments WHERE user_id = ? AND status IN ('proposed', 'pending', 'missed')").all(parsed.data.userId);
-        }
-      }
-
+      const rows = db.prepare("SELECT * FROM commitments WHERE user_id = ? AND status IN ('proposed', 'pending', 'missed')").all(parsed.data.userId);
       return { content: [{ type: "text", text: JSON.stringify(rows) }] };
     }
 

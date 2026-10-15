@@ -1585,3 +1585,14 @@ h1, h2, h3, h4, h5, h6 {
   clip: rect(0, 0, 0, 0);
   border: 0;
 }
+
+.command-palette-input {
+  color: #FFFFFF !important;
+  caret-color: #E8B36E !important;
+  -webkit-text-fill-color: #FFFFFF !important;
+}
+
+.command-palette-input::placeholder {
+  color: rgba(255, 255, 255, 0.45) !important;
+  -webkit-text-fill-color: rgba(255, 255, 255, 0.45) !important;
+}

@@ -113,6 +113,7 @@ export function CommandPalette({ isOpen, onClose, commitments = [], onReplan }: 
           <input
             ref={inputRef}
             type="text"
+            className="command-palette-input"
             value={query}
             onChange={(e) => { setQuery(e.target.value); setSelectedIndex(0); }}
             onKeyDown={(e) => {
@@ -133,8 +134,10 @@ export function CommandPalette({ isOpen, onClose, commitments = [], onReplan }: 
               background: 'transparent',
               border: 'none',
               outline: 'none',
-              color: 'var(--text-primary, #ffffff)',
-              fontSize: '1rem',
+              color: '#FFFFFF',
+              caretColor: '#e8b36e',
+              fontSize: '1.05rem',
+              fontWeight: 500,
               fontFamily: 'inherit'
             }}
           />
