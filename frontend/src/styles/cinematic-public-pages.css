@@ -698,6 +698,12 @@
   font-size: 14px;
   outline: none;
   transition: border-color .18s ease, box-shadow .18s ease;
+  color-scheme: dark;
+}
+.sa-auth-input::-webkit-calendar-picker-indicator {
+  filter: invert(1);
+  opacity: 0.7;
+  cursor: pointer;
 }
 .sa-auth-input:focus {
   border-color: var(--sa-amber);

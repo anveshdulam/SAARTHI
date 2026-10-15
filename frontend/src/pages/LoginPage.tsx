@@ -2,6 +2,7 @@ import { type FormEvent, useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
+  Calendar,
   Check,
   Eye,
   EyeOff,
@@ -60,6 +61,7 @@ export function LoginPage() {
   const [email, setEmail] = useState(() => localStorage.getItem('saarthi_auth_email') || '');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [birthdate, setBirthdate] = useState('2000-01-01');
   const [code, setCode] = useState('');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -145,6 +147,8 @@ export function LoginPage() {
           const savedUsername = localStorage.getItem('saarthi_auth_username');
           if (err?.name === 'UserNotFoundException' && savedUsername && savedUsername !== email.trim()) {
             result = await signIn({ username: savedUsername, password });
+          } else if (err?.name === 'UserNotFoundException' && normalizeUsername(email) !== email.trim()) {
+            result = await signIn({ username: normalizeUsername(email), password });
           } else {
             throw firstError;
           }
@@ -155,10 +159,16 @@ export function LoginPage() {
         const username = normalizeUsername(email);
         localStorage.setItem('saarthi_auth_username', username);
         localStorage.setItem('saarthi_auth_email', email.trim());
+        const userBirthdate = birthdate.trim() || '2000-01-01';
         const result = await signUp({
           username,
           password,
-          options: { userAttributes: { email: email.trim() } }
+          options: {
+            userAttributes: {
+              email: email.trim(),
+              birthdate: userBirthdate,
+            }
+          }
         });
         if (result.isSignUpComplete) {
           setMode('signIn');
@@ -314,6 +324,24 @@ export function LoginPage() {
                     required
                     disabled={loading}
                     autoFocus
+                  />
+                </div>
+              </div>
+            )}
+
+            {mode === 'signUp' && (
+              <div className="sa-auth-field">
+                <label>Date of Birth</label>
+                <div className="sa-auth-input-wrapper">
+                  <Calendar size={16} className="field-icon" />
+                  <input
+                    type="date"
+                    className="sa-auth-input"
+                    value={birthdate}
+                    onChange={(e) => setBirthdate(e.target.value)}
+                    required
+                    disabled={loading}
+                    max={new Date().toISOString().split('T')[0]}
                   />
                 </div>
               </div>
