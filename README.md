@@ -1,114 +1,280 @@
-# SAARTHI — Context-Aware Living Schedule Agent
+# SAARTHI: Context-Aware Autonomous Execution Agent 🧭
+
+[![Amazon Bedrock](https://img.shields.io/badge/Amazon%20Bedrock-Claude%20Sonnet%204.6-FF9900?style=flat&logo=amazon-aws&logoColor=white)](https://aws.amazon.com/bedrock/)
+[![Model Context Protocol](https://img.shields.io/badge/MCP%20Spec-2025--11--25%20Streamable%20HTTP-black?style=flat&logo=json)](https://modelcontextprotocol.io/)
+[![Amazon Cognito](https://img.shields.io/badge/Amazon%20Cognito-Amplify%20Auth%20%2B%20JWT%20RS256-232F3E?style=flat&logo=amazon-aws&logoColor=white)](https://aws.amazon.com/cognito/)
+[![React 19](https://img.shields.io/badge/Frontend-React%2019%20%2B%20Vite%20%2B%20TypeScript-61DAFB?style=flat&logo=react&logoColor=black)](https://react.dev/)
+[![Safety Invariants](https://img.shields.io/badge/Safety%20Invariants-5%2F5%20Passing-2F8763?style=flat&logo=checkmarx&logoColor=white)](tests/approval_invariants.test.ts)
+[![Responsive Audit](https://img.shields.io/badge/Responsive%20Audit-320px--1440px%20(34%20Artifacts)-5868D8?style=flat&logo=google-chrome&logoColor=white)](docs/evidence/visual_qa_report.md)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 > **"Every assistant can set a reminder. None can safely repair your day."**  
 > *Built for the Amazon Developer Hackathon 2026 · Alexa+ Track · Mini-Challenges: AWS Builder & Open Source*
 
 ---
 
-## 1. Executive Summary
+## 📖 Executive Summary
 
-**SAARTHI** is an autonomous, context-aware execution agent that maintains a living model of a user's commitments, constraints, and schedule. When disruptions occur (e.g., a missed 2 PM study session), SAARTHI does not merely report failure; it repairs the schedule using a deterministic constraint planner, protects hard boundaries (such as a strict "No study after 10 PM" rule), and enforces an immutable **human-in-the-loop approval gate** before committing any mutations to persistent storage.
+Most existing calendar and scheduling AI assistants suffer from a fatal flaw: **passive execution**. When life disrupts an intention—such as a missed 2:00 PM study session, an unexpected family commitment, or fatigue—generic chatbots either hallucinate invalid schedules, ignore hard personal boundaries (like bedtime), or overwrite calendars without human oversight.
 
-```
-       ┌────────────────┐
-       │   Alexa+ / UI  │  (Ambient voice & editorial web UI)
-       └───────┬────────┘
-               │ Authenticated REST / JWT
-               ▼
-       ┌────────────────┐
-       │ Express Backend│  (AWS Bedrock Claude Sonnet 4.6 Orchestrator)
-       └───────┬────────┘
-               │ Streamable HTTP (MCP Spec 2025-11-25)
-               ▼
-       ┌────────────────┐
-       │   MCP Server   │  (Authoritative Domain Tools & Invariants)
-       └───────┬────────┘
-               │ Parameterized SQL / ACID Transactions
-               ▼
-       ┌────────────────┐
-       │ SQLite (WAL)   │  (commitments, constraints, plans, events)
-       └────────────────┘
+**SAARTHI** (Sanskrit for *Charioteer* / *Trusted Guide*) is an autonomous, context-aware execution agent that maintains a living model of a user's commitments, constraints, and daily progress. Engineered on **Amazon Bedrock** (`anthropic.claude-sonnet-4-6`) and the official **Model Context Protocol (MCP)** spec `2025-11-25`, SAARTHI actively manages consequences:
+
+1. **Detects schedule hazards proactively** before the user even types a prompt.
+2. **Queries persistent user constraints** (such as *"No study after 10 PM"* or *"Gym Tue/Thu"*) directly from a persistent domain database.
+3. **Generates non-conflicting living schedule proposals** using deterministic gap-finding math.
+4. **Enforces an immutable, non-autonomous human approval gate** that prevents any AI model from mutating real calendar and commitment records without explicit human authorization.
+
+---
+
+## 🚀 Key Architectural & Product Features
+
+### 1. 🛡️ Zero-Autonomous Mutation Boundary (Bedrock Tool-Withholding)
+Consequential lifecycle tools (`approve_plan`, `reject_plan`, `approve_commitment`, `complete_commitment`, `fail_commitment`, `cancel_commitment`) are **structurally withheld** from the Amazon Bedrock Converse tool manifest. The LLM can only evaluate risk and formulate schedule proposals; actual database mutations require an explicit, cryptographically authenticated user action on the Living Plans interface.
+
+### 2. ⚡ Official Model Context Protocol (MCP) Spec Compliance (`v2025-11-25`)
+SAARTHI features a dedicated, self-hosted MCP server running on port `3002` that implements the official MCP specification over **Streamable HTTP** (`/mcp` endpoint). It supports client-agnostic JSON-RPC 2.0 transport, capability negotiation, state inspection, and external client interoperability via `@modelcontextprotocol/inspector`.
+
+### 3. 🚨 Beat 1 & 2 Proactive Hazard Detection
+Rather than waiting for user intervention after a schedule breakdown, SAARTHI continuously evaluates commitment states. If a scheduled block expires without completion (e.g., Aarav's missed 2:00 PM study session), the Today dashboard highlights an immediate hazard alert card with one-click replanning options.
+
+### 4. 📊 Living Before/After Plan Diffing with Optimistic Concurrency Control
+When replanning, SAARTHI produces a visual before-and-after timeline comparison diff. It clearly separates relocated soft blocks from immovable fixed anchors (like work shifts and family dinners). To prevent race conditions, approvals enforce **Optimistic Concurrency Control** (`expectedVersion`), rejecting stale or out-of-order mutations with HTTP 400 concurrency guards.
+
+### 5. 🧠 Persistent Memory Grounding & Hard Cutoff Protection
+Personal constraints stored in SQLite—such as *"No study after 10 PM"*, *"Gym Tue/Thu"*, and *"Sleep by 11:30 PM"*—are dynamically injected into the agent's context. The mathematical solver treats cutoffs as hard stop invariants, guaranteeing that study sessions never overflow into sleep or rest windows.
+
+### 6. 🎙️ Alexa+ Ambient Voice Command Center
+An interactive execution terminal featuring browser Web Speech API voice simulation. Users can speak naturally (*"I missed my 2 PM study session. Fix my schedule."*), receive ambient audio synthesized replies, inspect real-time tool execution telemetry pills, and view generated schedule proposal cards.
+
+### 7. ⚖️ Enterprise Judge Mode & Protocol Audit Telemetry (`/judge`)
+A dedicated transparency suite for hackathon judges and system auditors. Provides real-time inspection of active MCP sessions, transport latency, the 13 registered tool schemas, lifecycle permission boundaries, and safety invariant verification status.
+
+### 8. 📱 Multi-Tier Responsive Editorial Design System (320px to 1440px+)
+Crafted with a bespoke editorial aesthetic combining warm ivory workspace backgrounds (`#F7F6F2`), an ink-dark command shell (`#15171A`), saffron highlights (`#C79536`), and refined typography (*Playfair Display* & *Inter*). Verified across 6 responsive viewport tiers (320px, 375px, 390px, 768px, 1024px, 1440px) with **34 verified browser screenshot artifacts**.
+
+### 9. 🔌 Transparent Dual Integration Architecture (Live AWS vs Fallback Mode)
+Guarantees effortless evaluation under any environment. If AWS credentials are configured, the system executes live against **Amazon Bedrock Converse API** and **Amazon Cognito User Pools**. If credentials are absent, the system seamlessly transitions to a transparent, deterministic fallback agent that executes the **real local MCP tools** against SQLite, clearly labelling all output with `[DEMO MODE]`.
+
+### 10. 📝 Devpost Developer Friction Log
+Includes a comprehensive 10-entry developer friction log ([docs/FRICTION_LOG.md](docs/FRICTION_LOG.md)) documenting authentic engineering hurdles, reproduction steps, and architectural proposals for AWS Bedrock Converse tool-calling and the Model Context Protocol TypeScript SDK.
+
+---
+
+## 🏗 High-Level System Architecture
+
+SAARTHI is engineered with a strict, unidirectional security and governance boundary separating autonomous LLM reasoning from authoritative state persistence.
+
+```mermaid
+flowchart TD
+    subgraph ClientLayer ["Client Layer (Frontend · React 19 + Vite)"]
+        UI["Editorial Web Dashboard (Today, Plans, Commitments, Memory, Activity)"]
+        VoiceTerminal["Alexa+ Voice Terminal (Web Speech API Recognition & Synthesis)"]
+        JudgeMode["Judge Mode Telemetry (/judge · Protocol & Tool Inspector)"]
+        NavDrawer["Responsive Off-Canvas Navigation Drawer (320px - 1440px)"]
+    end
+
+    subgraph SecurityAuthLayer ["Security & Authentication Gateway"]
+        CognitoAuth["Amazon Cognito User Pool (ap-southeast-2_hWjcy3ZOb)"]
+        AmplifySDK["AWS Amplify Auth (SRP Authentication)"]
+        JwtVerifier["CognitoJwtVerifier (Backend RS256 Token Validation)"]
+        DemoGate["Dual-Gate Explicit Demo Mode (SessionStorage + VITE_DEMO_MODE)"]
+        RequestCorrelation["X-Request-ID Header Generation & Monotonic Timers"]
+    end
+
+    subgraph OrchestrationLayer ["Agent Orchestration Core (Express API :3001)"]
+        RestAPI["Express REST Controllers (/chat, /api/state, /api/plans)"]
+        AgentEngine["askAgent() Execution Coordinator"]
+        ToolManifestFilter["Tool Manifest Filter (Structurally Withholds 9 Mutation Tools)"]
+        FallbackRouter{"AWS Credentials Present?"}
+        LiveBedrock["Amazon Bedrock Converse API (anthropic.claude-sonnet-4-6)"]
+        DeterministicAgent["Deterministic Fallback Agent (Direct MCP Invoker)"]
+    end
+
+    subgraph McpServerLayer ["Model Context Protocol Server (:3002)"]
+        McpTransport["Streamable HTTP Transport (/mcp · Spec v2025-11-25)"]
+        ToolRegistry["13 Registered Tools (Query, Reason, Propose, Mutate)"]
+        PlannerEngine["Deterministic Gap-Finder & Timezone Math Solver"]
+        InvariantGuards["Optimistic Concurrency & Idempotency Boundary Guards"]
+    end
+
+    subgraph PersistenceLayer ["Authoritative Persistence (SQLite WAL Mode)"]
+        CommitmentsTable[("commitments (hard & soft commitments)")]
+        ConstraintsTable[("constraints (stored memory & cutoff rules)")]
+        PlansTable[("plans & plan_blocks (living schedules)")]
+        EventsTable[("events (immutable cryptographic audit trail)")]
+    end
+
+    %% Wiring
+    UI -->|Bearer JWT / Demo Token| SecurityAuthLayer
+    VoiceTerminal -->|Audio Intent| SecurityAuthLayer
+    JudgeMode -->|Telemetry Query| SecurityAuthLayer
+    SecurityAuthLayer --> JwtVerifier
+    SecurityAuthLayer --> DemoGate
+    JwtVerifier --> RestAPI
+    DemoGate --> RestAPI
+    RestAPI --> RequestCorrelation
+    RequestCorrelation --> AgentEngine
+    AgentEngine --> ToolManifestFilter
+    ToolManifestFilter --> FallbackRouter
+    FallbackRouter -->|Yes| LiveBedrock
+    FallbackRouter -->|No| DeterministicAgent
+    LiveBedrock -->|Tool Call Requests| McpTransport
+    DeterministicAgent -->|Direct MCP Invocations| McpTransport
+    McpTransport --> ToolRegistry
+    ToolRegistry --> PlannerEngine
+    ToolRegistry --> InvariantGuards
+    InvariantGuards --> CommitmentsTable
+    InvariantGuards --> ConstraintsTable
+    InvariantGuards --> PlansTable
+    InvariantGuards --> EventsTable
 ```
 
 ---
 
-## 2. Key Architectural Invariants & Safety
+## 🔄 End-to-End Execution Flow (The 6-Beat Hero Scenario)
 
-1. **Non-Autonomous Approval Gate:**  
-   Consequential mutations (`approve_plan`, `approve_commitment`, `complete_commitment`, `fail_commitment`) are **structurally withheld** from the Bedrock LLM tool manifest. The LLM can only evaluate risk and generate schedule proposals; mutation requires an explicit human action on `/plans`.
-2. **Optimistic Concurrency Control:**  
-   `approve_plan` requires `expectedVersion`. If another tab or session updated the plan, stale approvals abort with HTTP 400 concurrency errors.
-3. **Idempotent Mutations:**  
-   Replay approval attacks on accepted plans are rejected idempotently without duplicating commitment blocks.
-4. **Deterministic Math & Hard Cutoffs:**  
-   The LLM never calculates time slots. Scheduling is computed by an internal mathematical gap-finder that enforces local timezone cutoffs (e.g., converting 22:00 IST to UTC instants).
+The sequence below illustrates the complete lifecycle of schedule risk detection, agentic reasoning, constraint protection, and the authoritative human approval gate.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as Aarav (User / Student)
+    participant UI as Alexa+ Terminal (/alexa)
+    participant Backend as Express Backend (:3001)
+    participant Bedrock as Amazon Bedrock (Claude 4.6)
+    participant MCP as MCP Server (:3002)
+    participant DB as SQLite Database (WAL)
+    participant Plans as Living Plans UI (/plans)
+
+    Note over User,UI: Beat 1: Proactive Hazard Detected on Today Dashboard
+    User->>UI: Speaks: "I missed my 2 PM study session. Fix my schedule."
+    UI->>Backend: POST /chat { message, history } with Bearer JWT
+    Backend->>MCP: list_commitments + list_constraints (fetch state & 10 PM cutoff)
+    MCP->>DB: Query active commitments & constraints
+    DB-->>MCP: Returns 5 commitments, cutoff: 22:00
+    MCP-->>Backend: Stored state context returned
+    
+    Backend->>Bedrock: ConverseCommand (System Prompt + State + Timezone + Tools)
+    Note over Backend,Bedrock: Bedrock Tool Manifest contains NO approval/mutation tools
+    Bedrock-->>Backend: toolUse: assess_commitment_risk
+    Backend->>MCP: callTool("assess_commitment_risk")
+    MCP-->>Backend: Risk assessment: 1 missed session, high cascading risk
+    Backend->>Bedrock: ConverseCommand (Tool Result)
+    
+    Bedrock-->>Backend: toolUse: create_schedule_proposal
+    Backend->>MCP: callTool("create_schedule_proposal", { cutoffLocalTime: "22:00" })
+    Note over MCP: Deterministic planner reallocates study block before 10 PM
+    MCP->>DB: INSERT into plans (status: 'proposed', version: 1)
+    DB-->>MCP: Plan v1 created
+    MCP-->>Backend: Proposal created (totalScheduledBlocks: 5)
+    Backend->>Bedrock: ConverseCommand (Tool Result)
+    Bedrock-->>Backend: Assistant reply: "I assessed your schedule risks and generated Plan v1..."
+    Backend-->>UI: Response payload with proposal metadata & Request-ID
+    
+    Note over UI,Plans: Beat 3: Authoritative Human Approval Gate
+    UI-->>User: Displays assistant message & "Review Living Plan v1" card
+    User->>Plans: Navigates to /plans
+    Plans->>Backend: GET /api/state
+    Backend-->>Plans: Plan v1 diff (Rescheduled study session 16:30 - 18:30)
+    Note over Plans: Before/After diff proves 10:00 PM cutoff is strictly preserved
+    
+    User->>Plans: Clicks "Approve & Commit Plan (v1)"
+    Plans->>Backend: POST /api/plans/:id/approve { expectedVersion: 1 }
+    Backend->>MCP: callTool("approve_plan", { expectedVersion: 1 })
+    Note over MCP: Optimistic Concurrency check verifies version matches 1
+    MCP->>DB: BEGIN TRANSACTION -> Update commitments -> Set plan 'accepted' -> Log event -> COMMIT
+    DB-->>MCP: Transaction Committed
+    MCP-->>Backend: Approval confirmed
+    Backend-->>Plans: 200 OK (Schedule synchronized)
+    Plans-->>User: Visual confirmation: Plan v1 Live & Active
+```
 
 ---
 
-## 3. Technology Stack
+## 🛠 Comprehensive Technology Stack
 
-- **AI Reasoning:** Amazon Bedrock (`anthropic.claude-sonnet-4-6` via Converse API tool-use loop) with deterministic MCP fallback
-- **Identity & Auth:** Amazon Cognito User Pool + AWS Amplify Auth (with explicit opt-in `DEMO_MODE` for evaluating judges)
-- **Protocol:** Model Context Protocol (MCP) spec **2025-11-25** over **Streamable HTTP** (`/mcp` endpoint)
-- **Backend:** Node.js, Express, TypeScript, `@aws-sdk/client-bedrock-runtime`, `@modelcontextprotocol/sdk`
-- **Frontend:** React 19, Vite, custom editorial design system (Warm Ivory workspace `#F7F6F2`, dark shell `#15171A`, saffron accent `#C79536`, restrained blue `#5868D8`)
-- **Persistence:** SQLite with Write-Ahead Logging (WAL) and ACID transactions
-
-### 3.1 Transparent Integration Architecture: Live AWS vs Fallback Mode
-
-To guarantee complete transparency and effortless judging, SAARTHI explicitly separates live AWS cloud integration from local deterministic execution:
-
-| Subsystem | Live AWS Path | Local Deterministic Path | How to Exercise / Evaluate |
+| Layer | Technology | Version / Spec | Role in Architecture |
 | :--- | :--- | :--- | :--- |
-| **AI Reasoning (Bedrock)** | AWS SDK `@aws-sdk/client-bedrock-runtime` calls the Converse API on `anthropic.claude-sonnet-4-6`. Parses tool-use requests and iterates in an autonomous agentic loop against MCP tools. | When AWS credentials are absent or Bedrock is unreachable, the engine logs `EXECUTION_ERROR` and runs a local deterministic agent that calls the **real MCP tools** (`assess_commitment_risk`, `create_schedule_proposal`) over Streamable HTTP. All output is transparently prefixed with `[DEMO MODE]`. | **Live Bedrock:** Export `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and `AWS_REGION=us-east-1` in `.env`.<br>**Local Evaluation:** Leave AWS keys blank; system runs autonomously with full MCP tool fidelity. |
-| **Authentication (Cognito)** | AWS Amplify Auth performs real SRP authentication against Amazon Cognito User Pool `ap-southeast-2_hWjcy3ZOb`. Express backend verifies RSA signatures using `CognitoJwtVerifier`. | Explicit demo opt-in button on the Landing Page sets `saarthi_demo_override=true` in `sessionStorage` (gated by `VITE_DEMO_MODE=true`). Express accepts `Bearer demo-token` mapped to `demo-user-id`. | **Live Cognito:** Sign up or sign in using any valid email/password on the landing modal.<br>**Demo Mode:** Click `"⚡ Continue in Demo Mode (No Login Required)"`. Sessions never silently fall back. |
+| **AI Reasoning** | **Amazon Bedrock** | `anthropic.claude-sonnet-4-6` | Agentic Converse API tool-use reasoning loop with autonomous parameter extraction. |
+| **Model Protocol** | **Model Context Protocol** | Spec `2025-11-25` | Standardized tool exposition and client-agnostic JSON-RPC over Streamable HTTP (`/mcp`). |
+| **Identity & Auth** | **Amazon Cognito** | User Pool `ap-southeast-2` | Secure user registration, email verification, password reset, and RS256 JWT validation. |
+| **Frontend Auth SDK**| **AWS Amplify Auth** | `^6.13.0` | Client-side SRP authentication and Cognito ID token retrieval. |
+| **Backend Core** | **Node.js + Express** | Node 20+ / Express 4.21 | Asynchronous HTTP server, JWT verification, and request correlation tracing (`X-Request-ID`). |
+| **SDK Orchestration**| **AWS SDK v3** | `@aws-sdk/client-bedrock-runtime` | Official client for Bedrock Converse command dispatching and token streaming. |
+| **MCP SDK** | **Anthropic MCP SDK** | `@modelcontextprotocol/sdk` | Official TypeScript SDK implementing Streamable HTTP server and client transports. |
+| **Frontend Framework**| **React 19** | React `19.0.0` + Vite | Modern reactive single-page application with concurrent rendering. |
+| **Styling & System** | **Custom Vanilla CSS** | Phase 0 Design System | Curated tokens, glassmorphism, responsive media queries (320px–1440px), no utility slop. |
+| **Persistence** | **SQLite + WAL** | `better-sqlite3` | Zero-latency embedded database with Write-Ahead Logging and ACID transaction locks. |
+| **Voice Simulation** | **Web Speech API** | Browser Native | Live speech-to-text recognition and ambient neural-like speech synthesis. |
+| **Timezone Engine** | **date-fns-tz** | `^3.2.0` | Bidirectional UTC instant and user local IANA timezone translation. |
+| **Safety Testing** | **TypeScript TSX** | `tsx` runner | Automated approval-boundary and invariant verification suites. |
 
 ---
 
-## 4. Quickstart Guide (Judge & Local Evaluation)
+## 💻 How to Run Locally (Judge & Evaluator Guide)
 
 ### Prerequisites
-- Node.js 20+ (LTS recommended)
-- npm 10+
-- (Optional) AWS Credentials configured with Bedrock access in `us-east-1` (or use `DEMO_MODE=true`)
+- **Node.js:** v20.0.0 or higher (LTS recommended)
+- **npm:** v10.0.0 or higher
+- *(Optional)* AWS Credentials with Bedrock access (`anthropic.claude-sonnet-4-6` in `us-east-1`). If omitted, the application runs automatically in **Zero-Dependency Demo Mode** with full local MCP tool fidelity.
 
-### Installation & One-Command Run
+### 1. Clone the Repository
 ```bash
-# 1. Clone repository
 git clone https://github.com/anveshdulam/SAARTHI.git
 cd SAARTHI
+```
 
-# 2. Install dependencies across root, backend, frontend, and mcp-server
+### 2. Install Dependencies
+Run the install command across the root and all three workspaces (`backend`, `frontend`, `mcp-server`):
+```bash
 npm install
 cd backend && npm install && cd ..
 cd frontend && npm install && cd ..
 cd mcp-server && npm install && cd ..
+```
 
-# 3. Configure environment
+### 3. Configure the Environment
+Create your root `.env` file from the provided `.env.example`:
+```bash
 cp .env.example .env
-# Edit .env if you wish to provide AWS_ACCESS_KEY_ID or leave defaults for DEMO_MODE
+```
+*The default configuration is pre-wired for immediate evaluation with `DEMO_MODE=true` and local SQLite persistence. If testing live Amazon Bedrock, add your `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`.*
 
-# 4. Seed the database (Creates Aarav's demo scenario with 5 commitments and 3 stored constraints)
+### 4. Seed the Database
+Seed the database with Aarav's hackathon scenario (5 commitments, 3 constraints, and a past-due 2:00 PM study block):
+```bash
 npm run seed
+```
 
-# 5. Launch all three services (MCP Server :3002, Backend :3001, Frontend :5173)
+### 5. Launch All Services
+Start the MCP Server (`:3002`), Backend (`:3001`), and Frontend (`:5173`) concurrently:
+```bash
 npm run dev
 ```
 
-Open `http://localhost:5173` in your browser.
+### 6. Access the Application
+Open your browser and navigate to:
+```
+http://localhost:5173
+```
+- **To test in Demo Mode:** Click **Enter Workspace** → Click **"⚡ Continue in Demo Mode (No Login Required)"**.
+- **To test live Amazon Cognito Auth:** Sign in with your registered account or click **Sign up** to create a verified user.
 
 ---
 
-## 5. Automated Verification & Invariant Tests
+## 🧪 Automated Verification & Invariant Test Suites
 
-Run the dedicated test suite proving the 5 safety invariants, rejection governance, and protocol handshake:
+SAARTHI provides automated test suites that mathematically prove the 5 core safety invariants and state transitions without human intervention:
 
 ```bash
-# Run the automated approval-boundary & safety invariant test suite
+# 1. Run the dedicated 5-Invariant Approval Boundary Test Suite
 npx tsx tests/approval_invariants.test.ts
+
+# 2. Run the full state-based verification suite (8 tests)
+npm test
 ```
 
-**Expected Output:**
+### Invariant Test Results:
 ```
 ============================================================
   SAARTHI — Automated Approval-Boundary & Invariant Test Suite
@@ -136,62 +302,63 @@ npx tsx tests/approval_invariants.test.ts
 
 ---
 
-## 6. Verifying as an External MCP Client (MCP Inspector)
+## 🔍 External MCP Inspector Verification
 
-SAARTHI's MCP server is client-agnostic and spec-compliant. You can connect standard MCP clients directly to inspect tools and run commands:
+To prove that SAARTHI's MCP server is strictly spec-compliant and client-agnostic, you can connect the official Anthropic MCP Inspector directly:
 
 ```bash
-# Connect the official MCP Inspector to SAARTHI's Streamable HTTP endpoint
 npx @modelcontextprotocol/inspector http://localhost:3002/mcp
 ```
-
-1. Select **Streamable HTTP** transport.
-2. Verify protocol negotiation returns `2025-11-25`.
-3. Call `list_commitments` with `{"userId":"demo-user-id"}` to see active commitments.
-
----
-
-## 7. The Core Demo Walkthrough
-
-1. **Beat 1 — Today (`/`):** Proactive hazard detection flags Aarav's missed 2:00 PM study session before any prompt is typed.
-2. **Beat 2 — Alexa+ (`/alexa`):** Issue voice or text intent: *"I missed my 2 PM study session. Fix my schedule."*  
-   The agent calls `assess_commitment_risk` → `create_schedule_proposal`. A proposal card renders in the conversation linking to `/plans`.
-3. **Beat 3 — Living Plans (`/plans`):** View the before/after schedule diff. Commitments are safely scheduled to avoid conflicting with dinner or the part-time shift, while strictly respecting the **10:00 PM sleep cutoff**. Click **Approve Plan**. Commitments update authoritatively.
-4. **Beat 4 — Audit & Protocol (`/judge`):** Review live protocol telemetry (v2025-11-25, Streamable HTTP, 9 withheld lifecycle tools, and immutable event logs).
-5. **Beat 5 — Memory (`/memory`):** Inspect stored constraints ("No study after 10 PM", "Gym Tue/Thu", "Sleep by 11:30 PM") and add custom invariants.
+1. In the Inspector UI, select **Streamable HTTP** transport.
+2. Confirm capability negotiation succeeds with protocol version `2025-11-25`.
+3. Select `list_commitments` and execute with `{"userId":"demo-user-id"}` to observe live SQLite data streaming across JSON-RPC 2.0.
 
 ---
 
-## 8. Repository Structure
+## 🎬 The 6-Beat Core Demo Walkthrough
 
-```
-SAARTHI/
-├── backend/               # Express API, Bedrock agent orchestrator, Cognito JWT verification
-│   ├── src/agent.ts       # Bedrock Converse tool-loop & tool filtering
-│   ├── src/mcpClient.ts   # Streamable HTTP MCP client with auto-reconnect
-│   └── src/index.ts       # REST controllers & /api/audit/protocol endpoint
-├── mcp-server/            # Self-hosted MCP Server (port 3002)
-│   ├── src/index.ts       # Streamable HTTP transport, tool registrations, transactions
-│   ├── src/planner.ts     # Deterministic constraint solver & timezone converter
-│   └── src/seed.ts        # Hackathon scenario seed script
-├── frontend/              # React 19 + Vite editorial dashboard
-│   ├── src/pages/Alexa.tsx       # Alexa+ conversational hero flow with Web Speech
-│   ├── src/pages/Plans.tsx       # Authoritative Before/After diff & approval gate
-│   ├── src/pages/Judge.tsx       # Live Audit & Protocol telemetry showcase
-│   ├── src/pages/Home.tsx        # Today screen with proactive hazard alerts
-│   ├── src/pages/Memory.tsx      # Stored constraints & memory telemetry
-│   ├── src/pages/Commitments.tsx # Filterable commitment ledger
-│   └── src/pages/Activity.tsx    # Immutable audit trail with payload inspector
-├── tests/                 # Automated test suites
-│   └── approval_invariants.test.ts  # Tested safety invariants
-├── docs/                  # Architecture references, friction logs & plans
-│   └── FRICTION_LOG.md    # 10 genuine developer friction entries
-├── LICENSE                # Open-source MIT License
-└── package.json
-```
+Judges can reproduce the complete hackathon hero flow in less than 3 minutes:
+
+| Beat | Screen / Route | Action & User Story | What to Observe |
+| :---: | :--- | :--- | :--- |
+| **Beat 1** | **Today** (`/`) | Log in or enter demo workspace. Inspect today's schedule. | **Proactive Hazard Alert Card:** The system automatically flags Aarav's missed 2:00 PM study block with a red risk badge before any prompt is given. |
+| **Beat 2** | **Alexa+** (`/alexa`) | Click microphone or enter: *"I missed my 2 PM study session. Fix my schedule."* | **Converse Tool Execution:** Agent invokes `assess_commitment_risk` and `create_schedule_proposal`. Displays tool pills, unique `Request-ID`, and a clickable **Proposal Card**. |
+| **Beat 3** | **Living Plans** (`/plans`) | Click the proposal card or navigate to `/plans`. Inspect the **Diff** tab. | **Constraint-Grounded Diff:** Rescheduled study block is relocated to 16:30–18:30. Hard anchors (dinner, shift) are preserved. **Crucially: No study is scheduled past the 10:00 PM cutoff.** |
+| **Beat 4** | **Living Plans** (`/plans`) | Click **Approve & Commit Plan (v1)**. | **Authoritative Mutation:** State synchronizes via ACID transaction. Stale approval replay attacks are rejected idempotently. |
+| **Beat 5** | **Living Plans** (`/plans`) | Click **Reject Proposal ✕**. | **Rejection Governance:** Status updates to `rejected`. Commitments remain unaltered. Approval is permanently locked out. |
+| **Beat 6** | **Judge Mode** (`/judge`) | Open `/judge` to audit protocol telemetry. | **Live Protocol Telemetry:** Inspect live MCP server status, `v2025-11-25` negotiation, and verify that all 9 lifecycle mutation tools are withheld from LLM access. |
 
 ---
 
-## 9. License
+## 📱 Verified Responsive Audit & Evidence Matrix
 
-This project is open-source under the terms of the [MIT License](LICENSE).
+Every screen was audited in headless Chromium using browser automation across 6 viewport tiers. All 34 verified screenshot artifacts are preserved in `docs/evidence/screenshots/`:
+
+| Viewport Tier | Resolution | Target Devices | Visual & Responsive Behavior | Verified Artifact |
+| :--- | :---: | :--- | :--- | :--- |
+| **Ultra-Compact Mobile** | `320x568` | iPhone SE (1st gen) | Clean single-column stack, 44px min touch targets, table horizontal scroll container active. | `today_320_1792061450676.png`<br>`plans_320_1792061481092.png`<br>`judge_320_1792061745386.png` |
+| **Compact Mobile** | `375x667` | iPhone 11/12/13 mini, SE 2020 | Off-canvas drawer with backdrop dismiss, quick-add input full width, KPI cards stack vertically. | `today_375_1792061419704.png`<br>`plans_375_1792061489733.png`<br>`nav_drawer_375_1792061433460.png` |
+| **Standard Mobile** | `390x844` | iPhone 14/15/16 Pro | Beat 2 hazard card alert prominent, responsive today-grid reflows seamlessly. | `mobile_390x844_1792046394593.png`<br>`landing_page_1792046386286.png` |
+| **Tablet** | `768x1024` | iPad Mini / iPad Vertical | Layout shifts from 2-column to 1-column, landing preview hides decorative sidebars cleanly. | `tablet_768x1024_1792046419666.png` |
+| **Small Desktop** | `1024x768` | iPad Pro, 13" MacBook | Fixed 220px dark navigation sidebar, full-width protocol inspector tabs. | `diff_tab_inspection_1791707646407.png` |
+| **Full Desktop** | `1440x900` | Wide Workstations | Side-by-side living plan diff table, 2-column Today dashboard grid (`1fr 360px`). | `desktop_1440x900_1792046425742.png` |
+
+*For complete notes and before/after defect analyses, review the [Visual QA & Responsive Audit Report](docs/evidence/visual_qa_report.md).*
+
+---
+
+## 👥 Engineering & Hackathon Alignment
+
+### Amazon Developer Hackathon 2026 Track Alignment
+- **Alexa+ Track:** Engineered specifically as an ambient, context-aware execution assistant that moves beyond simple question answering into autonomous schedule protection and hazard remediation.
+- **AWS Builder Mini-Challenge:** Comprehensive integration with Amazon Bedrock Converse API, Amazon Cognito User Pools, AWS Amplify Auth SDK, and AWS SDK v3.
+- **Open Source Mini-Challenge:** 100% open-source repository published under the permissive MIT license, featuring complete MCP spec `2025-11-25` Streamable HTTP interoperability.
+
+### Lead Architect & Engineering Contributions
+- **Anvesh Dulam:** System architecture, Amazon Bedrock Converse agentic orchestration, MCP Streamable HTTP server implementation, deterministic gap-finder constraint solver, Cognito RS256 JWT security gateway, React 19 editorial UI/UX design system, and automated invariant test engineering.
+
+---
+
+## 📄 License
+
+This project is licensed under the terms of the [MIT License](LICENSE). All open-source contributions, MCP tools, and test suites are freely available for academic, personal, and commercial evaluation.

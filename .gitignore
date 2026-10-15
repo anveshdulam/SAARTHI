@@ -3,6 +3,7 @@ dist/
 .vite/
 .env
 .env.*
+!.env.example
 *.db
 *.db-wal
 *.db-shm
@@ -25,7 +26,11 @@ test_handshake.ts
 trigger_planner.ts
 trigger_state.ts
 tests/trigger_planner.ts
+tests/p2_runtime.ts
+tests/p2_runtime_verify.ts
+tests/p2_secret.ts
 mcp-server/scratch_tz.js
 
-# UI reference dump
+# UI reference dump & legacy evidence
 SAARTHI_UI_Reference_Pack/
+docs/ui-reference/qa_evidence/
