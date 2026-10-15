@@ -138,55 +138,54 @@ The sequence below illustrates the complete lifecycle of schedule risk detection
 ```mermaid
 sequenceDiagram
     autonumber
-    actor User as Aarav (User / Student)
-    participant UI as Alexa+ Terminal (/alexa)
+    actor User as Aarav (User)
+    participant Frontend as Frontend (Alexa+ / Plans)
     participant Backend as Express Backend (:3001)
     participant Bedrock as Amazon Bedrock (Claude 4.6)
     participant MCP as MCP Server (:3002)
-    participant DB as SQLite Database (WAL)
-    participant Plans as Living Plans UI (/plans)
+    participant DB as SQLite DB (WAL)
 
-    Note over User,UI: Beat 1: Proactive Hazard Detected on Today Dashboard
-    User->>UI: Speaks: "I missed my 2 PM study session. Fix my schedule."
-    UI->>Backend: POST /chat { message, history } with Bearer JWT
-    Backend->>MCP: list_commitments + list_constraints (fetch state & 10 PM cutoff)
-    MCP->>DB: Query active commitments & constraints
-    DB-->>MCP: Returns 5 commitments, cutoff: 22:00
+    Note over User,Frontend: Beat 1: Proactive Hazard Detected on Today Dashboard
+    User->>Frontend: "I missed my 2 PM study session.<br/>Fix my schedule."
+    Frontend->>Backend: POST /chat (Bearer JWT)
+    Backend->>MCP: list_commitments + list_constraints
+    MCP->>DB: Query commitments & constraints
+    DB-->>MCP: 5 commitments, cutoff: 22:00
     MCP-->>Backend: Stored state context returned
     
-    Backend->>Bedrock: ConverseCommand (System Prompt + State + Timezone + Tools)
-    Note over Backend,Bedrock: Bedrock Tool Manifest contains NO approval/mutation tools
+    Backend->>Bedrock: Converse API<br/>(Prompt + State + Tools)
+    Note over Backend,Bedrock: Bedrock Tool Manifest contains NO mutation tools
     Bedrock-->>Backend: toolUse: assess_commitment_risk
     Backend->>MCP: callTool("assess_commitment_risk")
-    MCP-->>Backend: Risk assessment: 1 missed session, high cascading risk
-    Backend->>Bedrock: ConverseCommand (Tool Result)
+    MCP-->>Backend: High cascading risk identified
+    Backend->>Bedrock: Converse API (Tool Result)
     
     Bedrock-->>Backend: toolUse: create_schedule_proposal
-    Backend->>MCP: callTool("create_schedule_proposal", { cutoffLocalTime: "22:00" })
-    Note over MCP: Deterministic planner reallocates study block before 10 PM
-    MCP->>DB: INSERT into plans (status: 'proposed', version: 1)
+    Backend->>MCP: callTool("create_schedule_proposal")<br/>(cutoffLocalTime: "22:00")
+    Note over MCP: Deterministic planner reallocates<br/>study block before 10 PM
+    MCP->>DB: INSERT into plans (status: 'proposed', v1)
     DB-->>MCP: Plan v1 created
-    MCP-->>Backend: Proposal created (totalScheduledBlocks: 5)
-    Backend->>Bedrock: ConverseCommand (Tool Result)
-    Bedrock-->>Backend: Assistant reply: "I assessed your schedule risks and generated Plan v1..."
-    Backend-->>UI: Response payload with proposal metadata & Request-ID
+    MCP-->>Backend: Proposal created (5 scheduled blocks)
+    Backend->>Bedrock: Converse API (Tool Result)
+    Bedrock-->>Backend: "Assessed risks & generated Plan v1..."
+    Backend-->>Frontend: Response with proposal card & Request-ID
     
-    Note over UI,Plans: Beat 3: Authoritative Human Approval Gate
-    UI-->>User: Displays assistant message & "Review Living Plan v1" card
-    User->>Plans: Navigates to /plans
-    Plans->>Backend: GET /api/state
-    Backend-->>Plans: Plan v1 diff (Rescheduled study session 16:30 - 18:30)
-    Note over Plans: Before/After diff proves 10:00 PM cutoff is strictly preserved
+    Note over User,Frontend: Beat 3 & 4: Authoritative Human Approval Gate
+    Frontend-->>User: Displays assistant reply & Plan v1 card
+    User->>Frontend: Navigates to /plans & reviews diff
+    Frontend->>Backend: GET /api/state
+    Backend-->>Frontend: Plan v1 diff (Rescheduled 16:30 - 18:30)
+    Note over Frontend: Diff verifies 10:00 PM cutoff<br/>is strictly preserved
     
-    User->>Plans: Clicks "Approve & Commit Plan (v1)"
-    Plans->>Backend: POST /api/plans/:id/approve { expectedVersion: 1 }
-    Backend->>MCP: callTool("approve_plan", { expectedVersion: 1 })
-    Note over MCP: Optimistic Concurrency check verifies version matches 1
-    MCP->>DB: BEGIN TRANSACTION -> Update commitments -> Set plan 'accepted' -> Log event -> COMMIT
+    User->>Frontend: Clicks "Approve & Commit Plan (v1)"
+    Frontend->>Backend: POST /api/plans/:id/approve<br/>{ expectedVersion: 1 }
+    Backend->>MCP: callTool("approve_plan")<br/>expectedVersion: 1
+    Note over MCP: Optimistic Concurrency check<br/>verifies expectedVersion matches 1
+    MCP->>DB: BEGIN TRANSACTION<br/>Update commitments & accept plan<br/>Log audit event -> COMMIT
     DB-->>MCP: Transaction Committed
     MCP-->>Backend: Approval confirmed
-    Backend-->>Plans: 200 OK (Schedule synchronized)
-    Plans-->>User: Visual confirmation: Plan v1 Live & Active
+    Backend-->>Frontend: 200 OK (Schedule synchronized)
+    Frontend-->>User: Visual confirmation: Plan v1 Live & Active
 ```
 
 ---
