@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { fetchAuthSession, getCurrentUser } from 'aws-amplify/auth';
 
 export interface ChatMessage {
   role: 'user' | 'agent';
@@ -18,15 +19,49 @@ export function useSaarthiState() {
     commitments: [], events: [], constraints: [], plans: [], plan_blocks: []
   });
 
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(true);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
 
   const getAuthHeaders = async (baseHeaders: Record<string, string> = {}) => {
-    // Explicitly bypassed as requested so user works inside seamlessly
+    try {
+      const session = await fetchAuthSession();
+      const idToken = session.tokens?.idToken?.toString();
+      if (idToken) {
+        return { ...baseHeaders, Authorization: `Bearer ${idToken}` };
+      }
+    } catch {
+      // Not signed in to Amplify / Cognito
+    }
+
+    // Fallback to demo token if demo mode is active
     return { ...baseHeaders, Authorization: `Bearer demo-token` };
+  };
+
+  const checkAuth = async (): Promise<boolean> => {
+    try {
+      const user = await getCurrentUser();
+      if (user) {
+        setIsAuthenticated(true);
+        return true;
+      }
+    } catch {
+      // Amplify user session not present
+    }
+
+    const hasDemoOverride = sessionStorage.getItem('saarthi_demo_override') === 'true' || import.meta.env.VITE_DEMO_MODE === 'true';
+    if (hasDemoOverride) {
+      setIsAuthenticated(true);
+      return true;
+    }
+
+    setIsAuthenticated(false);
+    return false;
   };
 
   const fetchState = async () => {
     try {
+      const authed = await checkAuth();
+      if (!authed) return;
+
       const headers = await getAuthHeaders();
       const res = await fetch("http://localhost:3001/api/state", { headers });
       if (res.ok) {
@@ -34,6 +69,9 @@ export function useSaarthiState() {
         const data = await res.json();
         setStateData(data);
       } else {
+        if (res.status === 401) {
+          setIsAuthenticated(false);
+        }
         console.warn("Could not fetch state from backend:", res.status);
       }
     } catch (e) {
@@ -58,9 +96,8 @@ export function useSaarthiState() {
 
   useEffect(() => {
     fetchState().then(() => {
-      syncTimezone(); // sync once on load after checking auth
+      syncTimezone();
     });
-    // P0: Removed the aggressive 1.5s global polling loop.
   }, []);
 
   const runCinematicSequence = async () => {

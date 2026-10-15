@@ -92,7 +92,7 @@ Open `http://localhost:5173` in your browser.
 
 ## 5. Automated Verification & Invariant Tests
 
-Run the dedicated test suite proving the 4 safety invariants and protocol handshake:
+Run the dedicated test suite proving the 5 safety invariants, rejection governance, and protocol handshake:
 
 ```bash
 # Run the automated approval-boundary & safety invariant test suite
@@ -117,8 +117,11 @@ npx tsx tests/approval_invariants.test.ts
 [INVARIANT 3] Verifying Authorized Approval & Idempotency Boundary...
   ✓ Invariant 3 PASS: First approval commits transaction; second approval is rejected idempotently.
 
+[INVARIANT 5] Verifying Plan Rejection & Non-Mutation Flow...
+  ✓ Invariant 5 PASS: Rejection sets status to 'rejected', logs audit event, and locks out approval.
+
 ============================================================
-  ALL APPROVAL-BOUNDARY & SAFETY INVARIANT TESTS PASSED (4/4)
+  ALL APPROVAL-BOUNDARY & SAFETY INVARIANT TESTS PASSED (5/5)
 ============================================================
 ```
 
