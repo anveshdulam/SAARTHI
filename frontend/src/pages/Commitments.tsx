@@ -7,6 +7,7 @@ export function Commitments() {
   const { isAuthenticated, fetchState, stateData, handleSend, loading, handleCompleteCommitment } = useSaarthiState();
   const [newTitle, setNewTitle] = useState('');
   const [activeTab, setActiveTab] = useState<'ALL' | 'ACTIVE' | 'AT_RISK' | 'COMPLETED'>('ALL');
+  const [searchQuery, setSearchQuery] = useState('');
   const [selectedCommitment, setSelectedCommitment] = useState<any | null>(null);
 
   if (isAuthenticated === null) return null;
@@ -17,9 +18,16 @@ export function Commitments() {
   const completed = stateData.commitments.filter((c: any) => c.status === 'completed');
 
   const filteredCommitments = stateData.commitments.filter((c: any) => {
-    if (activeTab === 'ACTIVE') return c.status === 'pending';
-    if (activeTab === 'AT_RISK') return c.status === 'missed';
-    if (activeTab === 'COMPLETED') return c.status === 'completed';
+    if (activeTab === 'ACTIVE' && c.status !== 'pending') return false;
+    if (activeTab === 'AT_RISK' && c.status !== 'missed') return false;
+    if (activeTab === 'COMPLETED' && c.status !== 'completed') return false;
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      const titleMatch = c.title?.toLowerCase().includes(q);
+      const typeMatch = c.type?.toLowerCase().includes(q);
+      const statusMatch = c.status?.toLowerCase().includes(q);
+      return titleMatch || typeMatch || statusMatch;
+    }
     return true;
   });
 
@@ -85,66 +93,97 @@ export function Commitments() {
         {/* Filter Tabs and Data Table */}
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
           
-          {/* Functional Filter Tabs */}
-          <div style={{ display: 'flex', borderBottom: '1px solid var(--border-color)', padding: '0 24px', background: 'var(--bg-elevated)', overflowX: 'auto' }}>
-            <div 
-              onClick={() => setActiveTab('ALL')}
-              style={{ 
-                padding: '18px 0', 
-                borderBottom: activeTab === 'ALL' ? '2px solid var(--primary)' : '2px solid transparent', 
-                color: activeTab === 'ALL' ? 'var(--primary)' : 'var(--text-muted-light)', 
-                fontWeight: activeTab === 'ALL' ? 600 : 500, 
-                cursor: 'pointer', 
-                marginRight: '32px',
-                fontSize: '13.5px',
-                whiteSpace: 'nowrap'
-              }}
-            >
-              All Commitments ({stateData.commitments.length})
+          {/* Functional Filter Tabs & Search Bar */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', borderBottom: '1px solid var(--border-color)', padding: '0 24px', background: 'var(--bg-elevated)', gap: '16px' }}>
+            <div style={{ display: 'flex', overflowX: 'auto', gap: '28px' }}>
+              <div 
+                onClick={() => setActiveTab('ALL')}
+                style={{ 
+                  padding: '18px 0', 
+                  borderBottom: activeTab === 'ALL' ? '2px solid var(--primary)' : '2px solid transparent', 
+                  color: activeTab === 'ALL' ? 'var(--primary)' : 'var(--text-muted-light)', 
+                  fontWeight: activeTab === 'ALL' ? 600 : 500, 
+                  cursor: 'pointer', 
+                  fontSize: '13.5px',
+                  whiteSpace: 'nowrap'
+                }}
+              >
+                All Commitments ({stateData.commitments.length})
+              </div>
+              <div 
+                onClick={() => setActiveTab('ACTIVE')}
+                style={{ 
+                  padding: '18px 0', 
+                  borderBottom: activeTab === 'ACTIVE' ? '2px solid var(--primary)' : '2px solid transparent', 
+                  color: activeTab === 'ACTIVE' ? 'var(--primary)' : 'var(--text-muted-light)', 
+                  fontWeight: activeTab === 'ACTIVE' ? 600 : 500, 
+                  cursor: 'pointer', 
+                  fontSize: '13.5px',
+                  whiteSpace: 'nowrap'
+                }}
+              >
+                Active Pending ({active.length})
+              </div>
+              <div 
+                onClick={() => setActiveTab('AT_RISK')}
+                style={{ 
+                  padding: '18px 0', 
+                  borderBottom: activeTab === 'AT_RISK' ? '2px solid var(--danger)' : '2px solid transparent', 
+                  color: activeTab === 'AT_RISK' ? 'var(--danger)' : 'var(--text-muted-light)', 
+                  fontWeight: activeTab === 'AT_RISK' ? 600 : 500, 
+                  cursor: 'pointer', 
+                  fontSize: '13.5px',
+                  whiteSpace: 'nowrap'
+                }}
+              >
+                At Risk / Missed ({atRisk.length})
+              </div>
+              <div 
+                onClick={() => setActiveTab('COMPLETED')}
+                style={{ 
+                  padding: '18px 0', 
+                  borderBottom: activeTab === 'COMPLETED' ? '2px solid #10b981' : '2px solid transparent', 
+                  color: activeTab === 'COMPLETED' ? '#10b981' : 'var(--text-muted-light)', 
+                  fontWeight: activeTab === 'COMPLETED' ? 600 : 500, 
+                  cursor: 'pointer',
+                  fontSize: '13.5px',
+                  whiteSpace: 'nowrap'
+                }}
+              >
+                Completed ({completed.length})
+              </div>
             </div>
-            <div 
-              onClick={() => setActiveTab('ACTIVE')}
-              style={{ 
-                padding: '18px 0', 
-                borderBottom: activeTab === 'ACTIVE' ? '2px solid var(--primary)' : '2px solid transparent', 
-                color: activeTab === 'ACTIVE' ? 'var(--primary)' : 'var(--text-muted-light)', 
-                fontWeight: activeTab === 'ACTIVE' ? 600 : 500, 
-                cursor: 'pointer', 
-                marginRight: '32px',
-                fontSize: '13.5px',
-                whiteSpace: 'nowrap'
-              }}
-            >
-              Active Pending ({active.length})
-            </div>
-            <div 
-              onClick={() => setActiveTab('AT_RISK')}
-              style={{ 
-                padding: '18px 0', 
-                borderBottom: activeTab === 'AT_RISK' ? '2px solid var(--danger)' : '2px solid transparent', 
-                color: activeTab === 'AT_RISK' ? 'var(--danger)' : 'var(--text-muted-light)', 
-                fontWeight: activeTab === 'AT_RISK' ? 600 : 500, 
-                cursor: 'pointer', 
-                marginRight: '32px',
-                fontSize: '13.5px',
-                whiteSpace: 'nowrap'
-              }}
-            >
-              At Risk / Missed ({atRisk.length})
-            </div>
-            <div 
-              onClick={() => setActiveTab('COMPLETED')}
-              style={{ 
-                padding: '18px 0', 
-                borderBottom: activeTab === 'COMPLETED' ? '2px solid #10b981' : '2px solid transparent', 
-                color: activeTab === 'COMPLETED' ? '#10b981' : 'var(--text-muted-light)', 
-                fontWeight: activeTab === 'COMPLETED' ? 600 : 500, 
-                cursor: 'pointer',
-                fontSize: '13.5px',
-                whiteSpace: 'nowrap'
-              }}
-            >
-              Completed ({completed.length})
+
+            {/* Keyword Search Input */}
+            <div style={{ padding: '8px 0', minWidth: '220px' }}>
+              <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                <input
+                  type="text"
+                  placeholder="Search commitments..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  style={{
+                    padding: '8px 12px 8px 30px',
+                    borderRadius: '6px',
+                    border: '1px solid var(--border-color)',
+                    background: 'var(--bg-card)',
+                    color: 'var(--text-primary)',
+                    fontSize: '13px',
+                    width: '100%',
+                    outline: 'none'
+                  }}
+                />
+                <span style={{ position: 'absolute', left: '10px', color: 'var(--text-muted)', fontSize: '12px' }}>🔍</span>
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery('')}
+                    style={{ position: 'absolute', right: '8px', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '12px' }}
+                    aria-label="Clear search"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 

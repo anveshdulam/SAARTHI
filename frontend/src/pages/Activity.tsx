@@ -6,6 +6,7 @@ import { LandingPage } from './LandingPage';
 export function Activity() {
   const { isAuthenticated, fetchState, stateData } = useSaarthiState();
   const [filter, setFilter] = useState('ALL');
+  const [searchQuery, setSearchQuery] = useState('');
   const [selectedEvent, setSelectedEvent] = useState<any | null>(null);
   const filters = ['ALL', 'COMMITMENTS', 'PLANS', 'APPROVALS', 'MEMORY', 'SYSTEM'];
 
@@ -13,20 +14,28 @@ export function Activity() {
   if (isAuthenticated === false) return <LandingPage onLogin={fetchState} />;
 
   const filteredEvents = stateData.events.filter((e: any) => {
+    let categoryMatch = true;
     if (filter === 'COMMITMENTS') {
-      return e.entity === 'commitment' || e.type.includes('COMMITMENT');
+      categoryMatch = e.entity === 'commitment' || e.type.includes('COMMITMENT');
+    } else if (filter === 'PLANS') {
+      categoryMatch = e.entity === 'plan' || e.type.includes('PLAN');
+    } else if (filter === 'APPROVALS') {
+      categoryMatch = e.type.includes('ACCEPTED') || e.type.includes('APPROVED');
+    } else if (filter === 'MEMORY') {
+      categoryMatch = e.entity === 'constraint' || e.type.includes('CONSTRAINT');
+    } else if (filter === 'SYSTEM') {
+      categoryMatch = !e.entity || e.entity === 'system' || (!e.type.includes('COMMITMENT') && !e.type.includes('PLAN'));
     }
-    if (filter === 'PLANS') {
-      return e.entity === 'plan' || e.type.includes('PLAN');
-    }
-    if (filter === 'APPROVALS') {
-      return e.type.includes('ACCEPTED') || e.type.includes('APPROVED');
-    }
-    if (filter === 'MEMORY') {
-      return e.entity === 'constraint' || e.type.includes('CONSTRAINT');
-    }
-    if (filter === 'SYSTEM') {
-      return !e.entity || e.entity === 'system' || (!e.type.includes('COMMITMENT') && !e.type.includes('PLAN'));
+
+    if (!categoryMatch) return false;
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      const typeMatch = e.type?.toLowerCase().includes(q);
+      const entityMatch = e.entity?.toLowerCase().includes(q);
+      const idMatch = e.id?.toLowerCase().includes(q);
+      const stateMatch = e.new_state ? (typeof e.new_state === 'string' ? e.new_state : JSON.stringify(e.new_state)).toLowerCase().includes(q) : false;
+      return typeMatch || entityMatch || idMatch || stateMatch;
     }
     return true;
   });
@@ -61,27 +70,61 @@ export function Activity() {
         {/* Audit Log Card */}
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
           
-          {/* Functional Filters Bar */}
-          <div style={{ display: 'flex', gap: '28px', padding: '0 28px', borderBottom: '1px solid var(--border-color)', background: 'var(--bg-elevated)', overflowX: 'auto' }}>
-            {filters.map(f => (
-              <div 
-                key={f} 
-                style={{ 
-                  padding: '18px 0',
-                  cursor: 'pointer', 
-                  color: filter === f ? 'var(--primary)' : 'var(--text-muted-light)', 
-                  fontWeight: filter === f ? 600 : 500,
-                  borderBottom: filter === f ? '2px solid var(--primary)' : '2px solid transparent',
-                  fontSize: '12.5px',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.05em',
-                  whiteSpace: 'nowrap'
-                }}
-                onClick={() => setFilter(f)}
-              >
-                {f}
+          {/* Functional Filters Bar & Search Bar */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', padding: '0 24px', borderBottom: '1px solid var(--border-color)', background: 'var(--bg-elevated)', gap: '16px' }}>
+            <div style={{ display: 'flex', gap: '24px', overflowX: 'auto' }}>
+              {filters.map(f => (
+                <div 
+                  key={f} 
+                  style={{ 
+                    padding: '18px 0',
+                    cursor: 'pointer', 
+                    color: filter === f ? 'var(--primary)' : 'var(--text-muted-light)', 
+                    fontWeight: filter === f ? 600 : 500,
+                    borderBottom: filter === f ? '2px solid var(--primary)' : '2px solid transparent',
+                    fontSize: '12.5px',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.05em',
+                    whiteSpace: 'nowrap'
+                  }}
+                  onClick={() => setFilter(f)}
+                >
+                  {f}
+                </div>
+              ))}
+            </div>
+
+            {/* Keyword Search Input */}
+            <div style={{ padding: '8px 0', minWidth: '220px' }}>
+              <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                <input
+                  type="text"
+                  placeholder="Search audit trail..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  style={{
+                    padding: '8px 12px 8px 30px',
+                    borderRadius: '6px',
+                    border: '1px solid var(--border-color)',
+                    background: 'var(--bg-card)',
+                    color: 'var(--text-primary)',
+                    fontSize: '13px',
+                    width: '100%',
+                    outline: 'none'
+                  }}
+                />
+                <span style={{ position: 'absolute', left: '10px', color: 'var(--text-muted)', fontSize: '12px' }}>🔍</span>
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery('')}
+                    style={{ position: 'absolute', right: '8px', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '12px' }}
+                    aria-label="Clear search"
+                  >
+                    ✕
+                  </button>
+                )}
               </div>
-            ))}
+            </div>
           </div>
 
           {filteredEvents.length === 0 ? (

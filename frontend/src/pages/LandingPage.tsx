@@ -1,506 +1,237 @@
-import React, { useState } from 'react';
-import { signIn, signUp, confirmSignUp, resendSignUpCode, resetPassword, confirmResetPassword, signOut } from 'aws-amplify/auth';
+import { useEffect, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import {
+  ArrowDown, ArrowRight, AudioLines, CalendarClock, Check,
+  CirclePlay, Compass, LockKeyhole, Menu, MoveUpRight, ShieldCheck,
+  Sparkles, X, Zap,
+} from 'lucide-react';
 import { BrandLogo } from '../components/layout/BrandLogo';
+import '../styles/cinematic-public-pages.css';
 
-export function LandingPage({ onLogin }: { onLogin: () => void }) {
-  const [showLogin, setShowLogin] = useState(false);
-  const [authMode, setAuthMode] = useState<'signIn' | 'signUp' | 'confirm' | 'forgot' | 'reset'>('signIn');
-  const [email, setEmail] = useState(() => localStorage.getItem('saarthi_auth_email') || '');
-  const [password, setPassword] = useState('');
-  const [code, setCode] = useState('');
-  const [error, setError] = useState('');
-  const [resendInfo, setResendInfo] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [signUpUsername, setSignUpUsername] = useState(() => localStorage.getItem('saarthi_auth_username') || '');
+type LandingPageProps = {
+  onLogin?: () => void | Promise<void>;
+};
 
-  const getUsernameFromEmail = (rawEmail: string) => {
-    return rawEmail.trim().toLowerCase().replace(/[^a-zA-Z0-9_.-]/g, '_');
-  };
+const useCases = [
+  {
+    index: '01',
+    title: 'Tell SAARTHI what matters.',
+    copy: 'Start with an intention, a commitment, or a day that has gone off course. Speak naturally; you do not need to manage another complicated system.',
+    icon: Compass,
+  },
+  {
+    index: '02',
+    title: 'Make a plan that fits real life.',
+    copy: 'SAARTHI can use your commitments and saved constraints to propose a more realistic next step instead of asking you to start from zero.',
+    icon: CalendarClock,
+  },
+  {
+    index: '03',
+    title: 'Stay in control of the change.',
+    copy: 'Review the proposal before it is applied. Important schedule changes remain yours to approve or reject.',
+    icon: ShieldCheck,
+  },
+];
 
-  const handleDemoEnter = () => {
+export function LandingPage({ onLogin }: LandingPageProps) {
+  const navigate = useNavigate();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [demoLoading, setDemoLoading] = useState(false);
+
+  useEffect(() => {
+    const nodes = Array.from(document.querySelectorAll<HTMLElement>('[data-reveal]'));
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches || !('IntersectionObserver' in window)) {
+      nodes.forEach((node) => node.classList.add('is-visible'));
+      return;
+    }
+
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('is-visible');
+          observer.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.12, rootMargin: '0px 0px -42px 0px' });
+
+    nodes.forEach((node) => observer.observe(node));
+    return () => observer.disconnect();
+  }, []);
+
+  const enterDemo = async () => {
+    if (import.meta.env.VITE_DEMO_MODE !== 'true') {
+      navigate('/login');
+      return;
+    }
     sessionStorage.setItem('saarthi_demo_override', 'true');
-    onLogin();
-  };
-
-  const passwordRules = [
-    { label: 'At least 8 characters', valid: password.length >= 8 },
-    { label: 'One number', valid: /[0-9]/.test(password) },
-    { label: 'One special character', valid: /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]+/.test(password) },
-    { label: 'One uppercase letter', valid: /[A-Z]/.test(password) },
-    { label: 'One lowercase letter', valid: /[a-z]/.test(password) }
-  ];
-
-  const handleResendCode = async () => {
-    if (loading) return;
-    setLoading(true);
-    setError('');
-    setResendInfo('');
+    setDemoLoading(true);
     try {
-      const targetUser = signUpUsername || localStorage.getItem('saarthi_auth_username') || getUsernameFromEmail(email) || email;
-      try {
-        await resendSignUpCode({ username: targetUser });
-      } catch (err: any) {
-        if (targetUser !== email) {
-          await resendSignUpCode({ username: email });
-        } else {
-          throw err;
-        }
-      }
-      setResendInfo('A fresh verification code was sent to your email.');
-    } catch (err: any) {
-      setError(err.message || 'Failed to resend verification code');
+      await onLogin?.();
+      navigate('/', { replace: true });
     } finally {
-      setLoading(false);
+      setDemoLoading(false);
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (loading) return;
-    setLoading(true);
-    setError('');
-    setResendInfo('');
-    
-    try {
-      if (authMode === 'signIn') {
-        let result;
-        try {
-          result = await signIn({ username: email, password });
-        } catch (signInErr: any) {
-          if (signInErr.name === 'UserAlreadyAuthenticatedException' || signInErr.message?.includes('already a signed in user')) {
-            try {
-              await signOut();
-              result = await signIn({ username: email, password });
-            } catch (retryErr: any) {
-              sessionStorage.removeItem('saarthi_demo_override');
-              await onLogin();
-              return;
-            }
-          } else {
-            throw signInErr;
-          }
-        }
-        
-        if (result.isSignedIn) {
-          sessionStorage.removeItem('saarthi_demo_override');
-          try {
-            await onLogin();
-          } catch (e) {
-            setError("Failed to initialize user session after login.");
-            setLoading(false);
-          }
-          return;
-        } else if (result.nextStep) {
-          const step = result.nextStep.signInStep;
-          if (step === 'CONFIRM_SIGN_UP') {
-            const derived = localStorage.getItem('saarthi_auth_username') || getUsernameFromEmail(email);
-            setSignUpUsername(derived);
-            setAuthMode('confirm');
-            setCode('');
-          } else if (step === 'RESET_PASSWORD') {
-            setAuthMode('forgot');
-          } else if (step === 'CONFIRM_SIGN_IN_WITH_NEW_PASSWORD_REQUIRED') {
-            setError('Account requires a new password. Please use the "Forgot Password" flow.');
-          } else {
-            setError(`Unsupported challenge: ${step}. Please contact support.`);
-          }
-        }
-      } else if (authMode === 'signUp') {
-        const derivedUsername = getUsernameFromEmail(email);
-        setSignUpUsername(derivedUsername);
-        localStorage.setItem('saarthi_auth_username', derivedUsername);
-        localStorage.setItem('saarthi_auth_email', email);
-
-        const result = await signUp({ 
-          username: derivedUsername, 
-          password, 
-          options: { userAttributes: { email, birthdate: '1990-01-01' } } 
-        });
-        
-        if (result.isSignUpComplete) {
-          setAuthMode('signIn');
-        } else if (result.nextStep?.signUpStep === 'CONFIRM_SIGN_UP') {
-          setAuthMode('confirm');
-          setCode('');
-        } else {
-          setError(`Unsupported sign-up step: ${result.nextStep?.signUpStep}`);
-        }
-      } else if (authMode === 'confirm') {
-        const targetUsername = signUpUsername || localStorage.getItem('saarthi_auth_username') || getUsernameFromEmail(email) || email;
-        try {
-          await confirmSignUp({ username: targetUsername, confirmationCode: code.trim() });
-        } catch (firstErr: any) {
-          if (targetUsername !== email) {
-            await confirmSignUp({ username: email, confirmationCode: code.trim() });
-          } else {
-            throw firstErr;
-          }
-        }
-        setAuthMode('signIn');
-        setPassword('');
-        setCode('');
-        setResendInfo('Email verified successfully! Please sign in with your password.');
-      } else if (authMode === 'forgot') {
-        const result = await resetPassword({ username: email });
-        if (result.nextStep?.resetPasswordStep === 'CONFIRM_RESET_PASSWORD_WITH_CODE') {
-          setAuthMode('reset');
-          setCode('');
-          setPassword('');
-        } else if (result.nextStep?.resetPasswordStep === 'DONE') {
-          setAuthMode('signIn');
-        } else {
-          setError(`Unsupported reset step: ${result.nextStep?.resetPasswordStep}`);
-        }
-      } else if (authMode === 'reset') {
-        await confirmResetPassword({ username: email, confirmationCode: code.trim(), newPassword: password });
-        setAuthMode('signIn');
-        setPassword('');
-        setCode('');
-        setResendInfo('Password reset successfully! Please sign in.');
-      }
-    } catch (err: any) {
-      setError(err.message || "Authentication failed");
-    } finally {
-      setLoading(false);
-    }
-  };
+  const openLogin = () => navigate('/login');
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#FDFBF7', color: 'var(--text-primary-light)', fontFamily: 'var(--font-sans)', display: 'flex', flexDirection: 'column' }}>
-      
-      {/* Top Navigation */}
-      <nav style={{ 
-        position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10,
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center', 
-        padding: 'var(--sp-24) var(--sp-40)'
-      }}>
-        <BrandLogo />
-        <div style={{ display: 'flex', gap: 'var(--sp-24)', alignItems: 'center' }}>
-          <a href="#workflow" style={{ fontSize: 'var(--fs-14)', fontWeight: 500, color: 'var(--text-secondary-light)' }}>Product</a>
-          <a href="#workflow" style={{ fontSize: 'var(--fs-14)', fontWeight: 500, color: 'var(--text-secondary-light)' }}>Philosophy</a>
-          <button className="button ghost" onClick={() => setShowLogin(true)} style={{ color: 'var(--text-primary-light)', fontWeight: 600 }}>Log in</button>
-        </div>
-      </nav>
+    <div className="sa-public sa-landing">
+      <header className="sa-site-header">
+        <Link to="/" aria-label="SAARTHI home" className="sa-brand-link">
+          <BrandLogo />
+        </Link>
+        <button
+          type="button"
+          className="sa-mobile-menu"
+          aria-label={menuOpen ? 'Close navigation menu' : 'Open navigation menu'}
+          aria-expanded={menuOpen}
+          onClick={() => setMenuOpen((open) => !open)}
+        >
+          {menuOpen ? <X size={20} /> : <Menu size={20} />}
+        </button>
+        <nav className={`sa-main-nav ${menuOpen ? 'is-open' : ''}`} aria-label="Main navigation">
+          <a href="#approach" onClick={() => setMenuOpen(false)}>The approach</a>
+          <a href="#workflow" onClick={() => setMenuOpen(false)}>How it works</a>
+          <a href="#control" onClick={() => setMenuOpen(false)}>Your control</a>
+          <button type="button" className="sa-nav-login" onClick={openLogin}>Sign in <MoveUpRight size={14} /></button>
+        </nav>
+      </header>
 
-      {/* Hero Section */}
-      <main style={{ 
-        flex: 1, 
-        display: 'flex', 
-        flexDirection: 'column', 
-        alignItems: 'center', 
-        textAlign: 'center', 
-        paddingTop: '160px',
-        paddingBottom: '80px',
-        paddingLeft: '20px',
-        paddingRight: '20px',
-        position: 'relative',
-        overflow: 'hidden'
-      }}>
-        
-        {/* Background Image with Gradient Overlay */}
-        <div style={{
-          position: 'absolute',
-          inset: 0,
-          zIndex: 0,
-          backgroundImage: 'url(/hero-scenic.jpg)',
-          backgroundSize: 'cover',
-          backgroundPosition: 'center',
-          backgroundRepeat: 'no-repeat',
-        }}>
-          <div style={{
-            position: 'absolute',
-            inset: 0,
-            background: 'linear-gradient(180deg, rgba(253, 251, 247, 0.7) 0%, rgba(253, 251, 247, 0.95) 40%, rgba(253, 251, 247, 1) 100%)'
-          }}></div>
-        </div>
-
-        <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' }}>
-          
-          <h1 className="editorial-heading" style={{ 
-            fontSize: 'clamp(2.5rem, 6vw, 4.5rem)', 
-            color: '#2C2A28', 
-            marginBottom: 'var(--sp-24)',
-            maxWidth: '800px',
-            lineHeight: 1.1,
-            overflowWrap: 'break-word'
-          }}>
-            From Intention to Action.
-          </h1>
-          
-          <p style={{ 
-            fontSize: 'var(--fs-18)', 
-            color: '#5C5852', 
-            maxWidth: '600px', 
-            lineHeight: 'var(--lh-relaxed)', 
-            marginBottom: 'var(--sp-48)' 
-          }}>
-            The execution engine that protects your commitments, organizes your plans, and remembers your context.
-          </p>
-          
-          <div style={{ display: 'flex', gap: 'var(--sp-16)' }}>
-            <button className="button primary lg" style={{ padding: '0 32px' }} onClick={() => setShowLogin(true)}>
-              Enter Workspace
-            </button>
-            <a href="#workflow" className="button ghost lg" style={{ color: '#5C5852', border: '1px solid #E5E2D9' }}>
-              See how it works
-            </a>
-          </div>
-          
-          {/* Detailed Product Preview */}
-          <div className="landing-mockup-preview" style={{ 
-            marginTop: '80px', 
-            width: '100%', 
-            maxWidth: '1100px', 
-            borderRadius: '16px', 
-            overflow: 'hidden', 
-            border: '1px solid var(--border-color)', 
-            boxShadow: 'var(--shadow-overlay)', 
-            display: 'flex', 
-            height: '600px', 
-            backgroundColor: 'var(--app-bg)',
-            textAlign: 'left'
-          }}>
-            {/* Fake Sidebar */}
-            <div className="landing-mockup-sidebar" style={{ width: '220px', backgroundColor: 'var(--sidebar-bg)', borderRight: '1px solid var(--dark-border)', display: 'flex', flexDirection: 'column' }}>
-              <div style={{ padding: '24px' }}>
-                <BrandLogo className="opacity-70" />
+      <main>
+        <section className="sa-hero" aria-labelledby="sa-hero-title">
+          <div className="sa-hero-backdrop" aria-hidden="true" />
+          <div className="sa-hero-grain" aria-hidden="true" />
+          <div className="sa-hero-grid">
+            <div className="sa-hero-copy">
+              <div className="sa-eyebrow sa-rise-in"><span className="sa-eyebrow-dot" /> YOUR PERSONAL EXECUTION PARTNER</div>
+              <h1 id="sa-hero-title" className="sa-display sa-hero-title">
+                From intention
+                <span>to <em>action.</em></span>
+              </h1>
+              <p className="sa-hero-subtitle sa-rise-in sa-delay-2">
+                Life rarely follows the plan. SAARTHI helps you find the next good step, protect what matters, and move forward without losing control.
+              </p>
+              <div className="sa-hero-actions sa-rise-in sa-delay-3">
+                <button type="button" className="sa-button sa-button-primary" onClick={openLogin}>
+                  Start your journey <ArrowRight size={17} />
+                </button>
+                <a href="#workflow" className="sa-button sa-button-quiet">
+                  <CirclePlay size={17} /> See how it works
+                </a>
               </div>
-              <div style={{ padding: '0 12px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                <div style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.05)', borderRadius: '6px', color: 'var(--text-primary-dark)', fontSize: '13px' }}>Today</div>
-                <div style={{ padding: '8px 12px', color: 'var(--text-secondary-dark)', fontSize: '13px' }}>Plans</div>
-                <div style={{ padding: '8px 12px', color: 'var(--text-secondary-dark)', fontSize: '13px' }}>Commitments</div>
-                <div style={{ padding: '8px 12px', color: 'var(--text-secondary-dark)', fontSize: '13px' }}>Memory</div>
+              <div className="sa-hero-proof sa-rise-in sa-delay-4">
+                <div><ShieldCheck size={16} /><span>Human-approved changes</span></div>
+                <span className="sa-proof-separator" />
+                <div><LockKeyhole size={16} /><span>Your context, kept personal</span></div>
               </div>
             </div>
-            
-            {/* Fake Workspace */}
-            <div className="workspace-light" style={{ flex: 1, backgroundColor: 'var(--workspace-bg)', display: 'flex', flexDirection: 'column' }}>
-              <div style={{ height: '72px', borderBottom: '1px solid var(--workspace-border)', display: 'flex', alignItems: 'center', padding: '0 32px' }}>
-                <span style={{ fontWeight: 600, color: 'var(--text-primary-light)' }}>Monday, October 10</span>
+
+            <div className="sa-hero-visual" aria-label="Illustrative preview of a SAARTHI schedule proposal">
+              <div className="sa-orbit sa-orbit-one" aria-hidden="true" />
+              <div className="sa-orbit sa-orbit-two" aria-hidden="true" />
+              <div className="sa-sunlight" aria-hidden="true" />
+              <div className="sa-float-note sa-float-note-top">
+                <span className="sa-note-icon"><CalendarClock size={16} /></span>
+                <span><strong>Plans can change.</strong><small>Your priorities don't have to.</small></span>
               </div>
-              <div style={{ padding: '40px 60px', flex: 1, display: 'flex', gap: '40px' }}>
-                <div style={{ flex: 2, display: 'flex', flexDirection: 'column', gap: '24px' }}>
-                  <h2 style={{ fontSize: '20px', fontWeight: 600 }}>Active Focus</h2>
-                  <div style={{ padding: '24px', background: 'var(--workspace-elevated)', border: '1px solid var(--workspace-border)', borderRadius: '12px', boxShadow: 'var(--shadow-sm)' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
-                      <span style={{ fontSize: '13px', color: 'var(--primary)', fontWeight: 600 }}>IN PROGRESS</span>
-                      <span style={{ fontSize: '13px', color: 'var(--text-muted-light)' }}>10:30 AM - 12:00 PM</span>
-                    </div>
-                    <div style={{ fontSize: '18px', fontWeight: 600, marginBottom: '8px' }}>Finalize Q4 Architecture Review</div>
-                    <div style={{ fontSize: '14px', color: 'var(--text-secondary-light)' }}>Review the infrastructure changes proposed by the core team and ensure compliance with latency guidelines.</div>
-                  </div>
-                  <h2 style={{ fontSize: '20px', fontWeight: 600, marginTop: '16px' }}>Upcoming</h2>
-                  <div style={{ padding: '16px', background: 'var(--workspace-elevated)', border: '1px solid var(--workspace-border)', borderRadius: '12px', display: 'flex', gap: '16px', alignItems: 'center' }}>
-                     <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: 'var(--saffron)' }}></div>
-                     <div>
-                       <div style={{ fontWeight: 500 }}>Sync with Product Team</div>
-                       <div style={{ fontSize: '13px', color: 'var(--text-secondary-light)' }}>1:00 PM • Strategic Planning</div>
-                     </div>
-                  </div>
+              <div className="sa-preview-window">
+                <div className="sa-preview-topbar">
+                  <div className="sa-preview-brand"><span className="sa-preview-mark">S</span> SAARTHI</div>
+                  <span className="sa-preview-label">ILLUSTRATIVE PREVIEW</span>
                 </div>
-                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '24px' }}>
-                  <h2 style={{ fontSize: '20px', fontWeight: 600 }}>Context</h2>
-                  <div style={{ padding: '20px', background: 'var(--workspace-elevated)', border: '1px solid var(--workspace-border)', borderRadius: '12px' }}>
-                    <div style={{ fontSize: '12px', textTransform: 'uppercase', color: 'var(--text-muted-light)', letterSpacing: '0.05em', marginBottom: '12px' }}>MEMORY CONSTRAINT</div>
-                    <div style={{ fontSize: '14px', lineHeight: 1.5 }}>"Always prioritize latency in architectural decisions. If a change adds &gt;50ms overhead, it requires executive approval."</div>
+                <div className="sa-preview-body">
+                  <div className="sa-preview-kicker"><Sparkles size={13} /> A moment to reset</div>
+                  <h2>A better plan for the day ahead.</h2>
+                  <p>One missed session doesn't have to derail your day.</p>
+                  <div className="sa-preview-message">
+                    <span className="sa-message-avatar"><AudioLines size={15} /></span>
+                    <span><small>YOU</small><strong>“I missed my study session. Help me adjust.”</strong></span>
                   </div>
+                  <div className="sa-preview-plan">
+                    <div className="sa-plan-title"><span>PROPOSED PLAN</span><span className="sa-plan-status"><span /> Awaiting review</span></div>
+                    <div className="sa-plan-row"><span className="sa-plan-time">07:15 PM</span><span className="sa-plan-track"><i className="sa-track-study" /></span><span className="sa-plan-task">Focused study</span></div>
+                    <div className="sa-plan-row"><span className="sa-plan-time">08:45 PM</span><span className="sa-plan-track"><i className="sa-track-break" /></span><span className="sa-plan-task">Break & reset</span></div>
+                    <div className="sa-plan-guard"><ShieldCheck size={14} /> Example constraint: finish focus work by 10 PM</div>
+                  </div>
+                  <div className="sa-preview-actions"><span><LockKeyhole size={13} /> Nothing changes without you</span><span className="sa-preview-review">Review <ArrowRight size={13} /></span></div>
                 </div>
               </div>
+              <div className="sa-float-note sa-float-note-bottom">
+                <span className="sa-check-mark"><Check size={14} /></span>
+                <span><strong>You stay the decision-maker.</strong><small>Review. Approve. Move forward.</small></span>
+              </div>
+              <div className="sa-visual-caption">A glimpse of the SAARTHI experience · illustrative, not live data</div>
             </div>
           </div>
-        </div>
+          <a href="#approach" className="sa-scroll-cue" aria-label="Scroll to learn about SAARTHI"><span>SCROLL TO EXPLORE</span><ArrowDown size={14} /></a>
+        </section>
+
+        <section className="sa-manifesto" id="approach" data-reveal>
+          <div className="sa-section-label">A DIFFERENT KIND OF PRODUCTIVITY</div>
+          <h2 className="sa-display">Not a stricter schedule.<br /><em>A kinder way forward.</em></h2>
+          <p>Most tools ask you to keep up. SAARTHI helps you recover when the day gets complicated — with context, practical next steps, and you in control of every consequential change.</p>
+        </section>
+
+        <section className="sa-workflow" id="workflow">
+          <div className="sa-section-heading" data-reveal>
+            <div><div className="sa-section-label">A SIMPLE, HUMAN-CENTRED LOOP</div><h2 className="sa-display">Make room for <em>real life.</em></h2></div>
+            <p>From the first intention to a better next step, every part of the journey is designed to be understandable and deliberate.</p>
+          </div>
+          <div className="sa-workflow-grid">
+            {useCases.map(({ index, title, copy, icon: Icon }) => (
+              <article className="sa-workflow-card" data-reveal key={index}>
+                <div className="sa-workflow-card-top"><span className="sa-workflow-number">{index}</span><span className="sa-workflow-icon"><Icon size={20} /></span></div>
+                <h3>{title}</h3><p>{copy}</p>
+                <span className="sa-workflow-line" aria-hidden="true" />
+              </article>
+            ))}
+          </div>
+        </section>
+
+        <section className="sa-feature-story" id="control" data-reveal>
+          <div className="sa-feature-visual" aria-hidden="true">
+            <div className="sa-story-window">
+              <div className="sa-story-window-head"><span>THE MOMENT THINGS CHANGE</span><span className="sa-story-window-dot" /></div>
+              <div className="sa-story-alert"><span className="sa-alert-mark">!</span><span><small>COMMITMENT AT RISK</small><strong>A study session was missed.</strong></span><span className="sa-alert-status">Needs attention</span></div>
+              <div className="sa-story-connector"><span /><span /><span /></div>
+              <div className="sa-story-suggestion"><span className="sa-suggestion-mark"><Sparkles size={15} /></span><span><small>SAARTHI'S NEXT STEP</small><strong>Prepare a realistic schedule proposal.</strong><small>Using your stored commitments and constraints.</small></span></div>
+              <div className="sa-story-footer"><LockKeyhole size={13} /> You review before anything changes.</div>
+            </div>
+          </div>
+          <div className="sa-feature-copy">
+            <div className="sa-section-label">BUILT AROUND YOUR AGENCY</div>
+            <h2 className="sa-display">Intelligent support.<br /><em>Human decisions.</em></h2>
+            <p>SAARTHI is designed to help plan and propose — not silently take over. You can inspect the suggested change, compare it with the current plan, and decide what happens next.</p>
+            <ul className="sa-trust-list">
+              <li><span><Check size={14} /></span> Context-aware proposals</li>
+              <li><span><Check size={14} /></span> Clear before-and-after review</li>
+              <li><span><Check size={14} /></span> Explicit approval for changes</li>
+            </ul>
+            <button type="button" className="sa-button sa-button-primary" onClick={openLogin}>Enter SAARTHI <ArrowRight size={16} /></button>
+          </div>
+        </section>
+
+        <section className="sa-closing" data-reveal>
+          <div className="sa-closing-glow" aria-hidden="true" />
+          <div className="sa-section-label">ONE STEP IS STILL PROGRESS</div>
+          <h2 className="sa-display">Begin where you are.<br /><em>Build from there.</em></h2>
+          <p>You do not need a perfect day. You just need a good next step.</p>
+          <button type="button" className="sa-button sa-button-light" onClick={openLogin}>Start your journey <ArrowRight size={17} /></button>
+        </section>
       </main>
 
-      {/* Workflow Section */}
-      <section id="workflow" style={{ 
-        backgroundColor: 'white', 
-        padding: '120px 20px', 
-        display: 'flex', 
-        flexDirection: 'column', 
-        alignItems: 'center', 
-        borderTop: '1px solid #E5E2D9' 
-      }}>
-        <h2 className="editorial-heading" style={{ fontSize: '2.5rem', marginBottom: '80px', color: '#2C2A28' }}>The Engine's Workflow</h2>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '48px', maxWidth: '1100px', width: '100%' }}>
-          
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div style={{ fontSize: '1.5rem', fontFamily: 'var(--font-serif)', color: 'var(--saffron)' }}>01. Plan</div>
-            <div style={{ color: '#5C5852', lineHeight: '1.6' }}>Living plans adapt when life changes. Generate flexible strategies instead of rigid tasks.</div>
-          </div>
-          
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div style={{ fontSize: '1.5rem', fontFamily: 'var(--font-serif)', color: 'var(--saffron)' }}>02. Commit</div>
-            <div style={{ color: '#5C5852', lineHeight: '1.6' }}>Declare intentions. SAARTHI tracks them and alerts you when they are at risk.</div>
-          </div>
-          
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div style={{ fontSize: '1.5rem', fontFamily: 'var(--font-serif)', color: 'var(--saffron)' }}>03. Execute</div>
-            <div style={{ color: '#5C5852', lineHeight: '1.6' }}>Focus on the current step with a distraction-free timeline and workspace context.</div>
-          </div>
-          
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div style={{ fontSize: '1.5rem', fontFamily: 'var(--font-serif)', color: 'var(--saffron)' }}>04. Review</div>
-            <div style={{ color: '#5C5852', lineHeight: '1.6' }}>Retain context indefinitely. Memory constraints ensure SAARTHI learns your preferences over time.</div>
-          </div>
-
-        </div>
-      </section>
-
-      {/* Footer */}
-      <footer style={{ padding: '60px 20px', borderTop: '1px solid #E5E2D9', display: 'flex', justifyContent: 'center', color: '#8C8882', backgroundColor: '#FDFBF7' }}>
-        <div style={{ maxWidth: '1100px', width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
-          <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-            <BrandLogo />
-            <span style={{ fontSize: '13px' }}>© 2026</span>
-          </div>
-          <div style={{ display: 'flex', gap: '24px', fontSize: '13px', flexWrap: 'wrap' }}>
-            <a href="#">Privacy</a>
-            <a href="#">Terms</a>
-            <a href="#">System Status</a>
-          </div>
-        </div>
+      <footer className="sa-footer">
+        <Link to="/" className="sa-brand-link" aria-label="SAARTHI home"><BrandLogo /></Link>
+        <p>From intention to action.</p>
+        <div className="sa-footer-links"><a href="#approach">Our approach</a><a href="#control">Your control</a><Link to="/login">Sign in</Link></div>
+        <span className="sa-footer-copy">© {new Date().getFullYear()} SAARTHI</span>
       </footer>
 
-      {/* Login Overlay */}
-      {showLogin && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.4)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(8px)' }}>
-          <div className="card" style={{ 
-            width: '100%', 
-            maxWidth: '440px', 
-            backgroundColor: 'var(--workspace-elevated)', 
-            borderColor: 'var(--workspace-border)',
-            boxShadow: 'var(--shadow-overlay)',
-            padding: '32px'
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '32px' }}>
-              <div>
-                <h2 className="editorial-heading" style={{ fontSize: '1.75rem', marginBottom: '8px', color: '#2C2A28' }}>
-                  {authMode === 'signIn' ? "Welcome back" : 
-                   authMode === 'signUp' ? "Create an account" : 
-                   authMode === 'confirm' ? "Verify your email" : 
-                   "Account recovery"}
-                </h2>
-                <p style={{ color: 'var(--text-secondary-light)' }}>
-                  {authMode === 'confirm' ? "Enter the code sent to your email." : 
-                   authMode === 'reset' ? "Enter your new password and the code sent to your email." :
-                   "Authenticate to access your workspace."}
-                </p>
-              </div>
-              <button className="icon-button" onClick={() => setShowLogin(false)} style={{ color: 'var(--text-muted-light)' }}>
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
-              </button>
-            </div>
-            
-            <form onSubmit={handleSubmit}>
-              {(authMode === 'signIn' || authMode === 'signUp' || authMode === 'forgot') && (
-                <div style={{ marginBottom: '16px' }}>
-                  <label className="label" style={{ color: 'var(--text-primary-light)', fontWeight: 500 }}>Email</label>
-                  <input type="email" value={email} onChange={e => setEmail(e.target.value)} required placeholder="Enter your email" className={`input ${error ? 'error' : ''}`} style={{ width: '100%', backgroundColor: 'var(--workspace-bg)', color: 'var(--text-primary-light)', borderColor: error ? 'var(--danger)' : 'var(--workspace-border)', padding: '12px 16px', fontSize: '16px' }} disabled={loading} autoFocus />
-                </div>
-              )}
-              
-              {(authMode === 'signIn' || authMode === 'signUp' || authMode === 'reset') && (
-                <div style={{ marginBottom: '16px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <label className="label" style={{ color: 'var(--text-primary-light)', fontWeight: 500 }}>
-                      {authMode === 'reset' ? "New Password" : "Password"}
-                    </label>
-                    {authMode === 'signIn' && (
-                      <span style={{ fontSize: '13px', color: 'var(--primary)', cursor: 'pointer' }} onClick={() => setAuthMode('forgot')}>Forgot password?</span>
-                    )}
-                  </div>
-                  <input type="password" value={password} onChange={e => setPassword(e.target.value)} required placeholder="Enter your password" className={`input ${error ? 'error' : ''}`} style={{ width: '100%', backgroundColor: 'var(--workspace-bg)', color: 'var(--text-primary-light)', borderColor: error ? 'var(--danger)' : 'var(--workspace-border)', padding: '12px 16px', fontSize: '16px' }} disabled={loading} />
-                  
-                  {(authMode === 'signUp' || authMode === 'reset') && (
-                    <div style={{ marginTop: '12px', fontSize: '13px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                      {passwordRules.map((rule, idx) => (
-                        <div key={idx} style={{ color: rule.valid ? 'var(--status-success)' : 'var(--text-muted-light)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          {rule.valid ? (
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                          ) : (
-                            <div style={{ width: '4px', height: '4px', borderRadius: '50%', backgroundColor: 'currentColor', marginLeft: '5px', marginRight: '5px' }}></div>
-                          )}
-                          <span style={{ fontWeight: rule.valid ? 500 : 400 }}>{rule.label}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {(authMode === 'confirm' || authMode === 'reset') && (
-                <div style={{ marginBottom: '16px' }}>
-                  <label className="label" style={{ color: 'var(--text-primary-light)', fontWeight: 500 }}>Confirmation Code</label>
-                  <input type="text" value={code} onChange={e => setCode(e.target.value)} required placeholder="Enter code" className={`input ${error ? 'error' : ''}`} style={{ width: '100%', backgroundColor: 'var(--workspace-bg)', color: 'var(--text-primary-light)', borderColor: error ? 'var(--danger)' : 'var(--workspace-border)', padding: '12px 16px', fontSize: '16px' }} disabled={loading} autoFocus />
-                  
-                  {authMode === 'confirm' && (
-                    <div style={{ marginTop: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '13px' }}>
-                      <span style={{ color: 'var(--text-muted-light)' }}>Code expired or didn't arrive?</span>
-                      <button 
-                        type="button" 
-                        onClick={handleResendCode} 
-                        disabled={loading}
-                        style={{ background: 'none', border: 'none', padding: 0, color: 'var(--primary)', cursor: 'pointer', fontWeight: 500, textDecoration: 'underline' }}
-                      >
-                        Resend code
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {resendInfo && (
-                <div style={{ padding: '10px 14px', background: 'rgba(16, 185, 129, 0.1)', border: '1px solid var(--status-success)', borderRadius: '6px', color: 'var(--status-success)', fontSize: '13px', marginBottom: '16px' }}>
-                  {resendInfo}
-                </div>
-              )}
-
-              {error && <div className="field-error" style={{ marginBottom: '16px', marginTop: '-4px' }}>{error}</div>}
-              
-              <button type="submit" className="button primary lg" style={{ width: '100%', fontWeight: 600, marginTop: '8px' }} disabled={loading}>
-                {loading ? <div className="spinner" style={{ borderColor: 'rgba(255,255,255,0.3)', borderTopColor: 'white' }}></div> : 
-                 authMode === 'signIn' ? "Sign In" : 
-                 authMode === 'signUp' ? "Create Account" : 
-                 authMode === 'confirm' ? "Verify Email" : 
-                 authMode === 'forgot' ? "Send Reset Code" : "Reset Password"}
-              </button>
-
-              <div style={{ marginTop: '24px', textAlign: 'center', fontSize: '14px', color: 'var(--text-secondary-light)' }}>
-                {authMode === 'signIn' ? (
-                  <>Don't have an account? <span style={{ color: 'var(--primary)', cursor: 'pointer', fontWeight: 500 }} onClick={() => setAuthMode('signUp')}>Sign up</span></>
-                ) : (
-                  <>Already have an account? <span style={{ color: 'var(--primary)', cursor: 'pointer', fontWeight: 500 }} onClick={() => setAuthMode('signIn')}>Sign in</span></>
-                )}
-              </div>
-
-              {import.meta.env.VITE_DEMO_MODE === 'true' && (
-                <div style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px solid var(--workspace-border)', textAlign: 'center' }}>
-                  <button 
-                    type="button" 
-                    onClick={handleDemoEnter} 
-                    style={{ 
-                      width: '100%', 
-                      padding: '10px 16px', 
-                      backgroundColor: 'var(--workspace-elevated)', 
-                      border: '1px dashed var(--saffron)', 
-                      color: 'var(--saffron)', 
-                      borderRadius: '8px', 
-                      fontWeight: 600, 
-                      cursor: 'pointer',
-                      fontSize: '14px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '8px'
-                    }}
-                  >
-                    <span>⚡</span> Continue in Demo Mode (No Login Required)
-                  </button>
-                </div>
-              )}
-            </form>
-          </div>
-        </div>
+      {import.meta.env.VITE_DEMO_MODE === 'true' && (
+        <button type="button" className="sa-demo-fab" onClick={enterDemo} disabled={demoLoading}>
+          <Zap size={15} /> {demoLoading ? 'Opening demo…' : 'Try local demo'}
+        </button>
       )}
     </div>
   );

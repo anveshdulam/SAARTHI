@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { fetchAuthSession, getCurrentUser } from 'aws-amplify/auth';
+import { fetchAuthSession } from 'aws-amplify/auth';
 
 export interface ChatMessage {
   role: 'user' | 'agent';
