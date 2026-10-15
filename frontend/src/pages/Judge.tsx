@@ -36,12 +36,17 @@ export function Judge() {
       const res = await fetch('http://localhost:3001/api/audit/protocol', {
         headers
       });
+      if (res.status === 401) {
+        return;
+      }
       if (res.ok) {
         const data = await res.json();
         setAuditData(data);
       }
-    } catch (err) {
-      console.error('Failed to fetch protocol audit:', err);
+    } catch (err: any) {
+      if (!err?.message?.includes('Authentication required')) {
+        console.error('Failed to fetch protocol audit:', err);
+      }
     } finally {
       setLoadingAudit(false);
     }

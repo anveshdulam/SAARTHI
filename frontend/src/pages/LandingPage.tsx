@@ -473,29 +473,31 @@ export function LandingPage({ onLogin }: { onLogin: () => void }) {
                 )}
               </div>
 
-              <div style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px solid var(--workspace-border)', textAlign: 'center' }}>
-                <button 
-                  type="button" 
-                  onClick={handleDemoEnter} 
-                  style={{ 
-                    width: '100%', 
-                    padding: '10px 16px', 
-                    backgroundColor: 'var(--workspace-elevated)', 
-                    border: '1px dashed var(--saffron)', 
-                    color: 'var(--saffron)', 
-                    borderRadius: '8px', 
-                    fontWeight: 600, 
-                    cursor: 'pointer',
-                    fontSize: '14px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '8px'
-                  }}
-                >
-                  <span>⚡</span> Continue in Demo Mode (No Login Required)
-                </button>
-              </div>
+              {import.meta.env.VITE_DEMO_MODE === 'true' && (
+                <div style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px solid var(--workspace-border)', textAlign: 'center' }}>
+                  <button 
+                    type="button" 
+                    onClick={handleDemoEnter} 
+                    style={{ 
+                      width: '100%', 
+                      padding: '10px 16px', 
+                      backgroundColor: 'var(--workspace-elevated)', 
+                      border: '1px dashed var(--saffron)', 
+                      color: 'var(--saffron)', 
+                      borderRadius: '8px', 
+                      fontWeight: 600, 
+                      cursor: 'pointer',
+                      fontSize: '14px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '8px'
+                    }}
+                  >
+                    <span>⚡</span> Continue in Demo Mode (No Login Required)
+                  </button>
+                </div>
+              )}
             </form>
           </div>
         </div>

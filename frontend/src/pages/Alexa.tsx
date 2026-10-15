@@ -21,6 +21,19 @@ export function Alexa() {
   const [speakOutput, setSpeakOutput] = useState(false);
   const [speechError, setSpeechError] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (speakOutput && typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      const lastMsg = messages[messages.length - 1];
+      if (lastMsg && lastMsg.role === 'agent' && !lastMsg.isError) {
+        window.speechSynthesis.cancel();
+        const cleanText = lastMsg.content.replace(/\[.*?\]/g, '').replace(/[\*_~#]/g, '');
+        const utterance = new SpeechSynthesisUtterance(cleanText);
+        utterance.rate = 1.0;
+        window.speechSynthesis.speak(utterance);
+      }
+    }
+  }, [messages, speakOutput]);
+
   if (isAuthenticated === null) return null;
   if (isAuthenticated === false) return <LandingPage onLogin={fetchState} />;
 
@@ -90,19 +103,6 @@ export function Alexa() {
       setIsListening(false);
     }
   };
-
-  useEffect(() => {
-    if (speakOutput && typeof window !== 'undefined' && 'speechSynthesis' in window) {
-      const lastMsg = messages[messages.length - 1];
-      if (lastMsg && lastMsg.role === 'agent' && !lastMsg.isError) {
-        window.speechSynthesis.cancel();
-        const cleanText = lastMsg.content.replace(/\[.*?\]/g, '').replace(/[\*_~#]/g, '');
-        const utterance = new SpeechSynthesisUtterance(cleanText);
-        utterance.rate = 1.0;
-        window.speechSynthesis.speak(utterance);
-      }
-    }
-  }, [messages, speakOutput]);
 
   return (
     <MainLayout>

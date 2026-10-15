@@ -21,7 +21,14 @@ export function useSaarthiState() {
 
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
 
-  const getAuthHeaders = async (baseHeaders: Record<string, string> = {}) => {
+  const isDemoExplicitlyActive = (): boolean => {
+    return (
+      import.meta.env.VITE_DEMO_MODE === 'true' &&
+      sessionStorage.getItem('saarthi_demo_override') === 'true'
+    );
+  };
+
+  const getAuthHeaders = async (baseHeaders: Record<string, string> = {}): Promise<Record<string, string>> => {
     try {
       const session = await fetchAuthSession();
       const idToken = session.tokens?.idToken?.toString();
@@ -29,26 +36,33 @@ export function useSaarthiState() {
         return { ...baseHeaders, Authorization: `Bearer ${idToken}` };
       }
     } catch {
-      // Not signed in to Amplify / Cognito
+      // Amplify user session not present, expired, or invalid
     }
 
-    // Fallback to demo token if demo mode is active
-    return { ...baseHeaders, Authorization: `Bearer demo-token` };
+    // Explicit opt-in gate: permitted only when frontend config explicitly allows it AND user intentionally chose demo mode
+    if (isDemoExplicitlyActive()) {
+      return { ...baseHeaders, Authorization: `Bearer demo-token` };
+    }
+
+    // Fail closed: Never silently fall back to demo token when Cognito session is missing/expired
+    setIsAuthenticated(false);
+    throw new Error('Authentication required. Session is missing or expired. Please sign in.');
   };
 
   const checkAuth = async (): Promise<boolean> => {
     try {
-      const user = await getCurrentUser();
-      if (user) {
+      const session = await fetchAuthSession();
+      const idToken = session.tokens?.idToken?.toString();
+      if (idToken) {
         setIsAuthenticated(true);
         return true;
       }
     } catch {
-      // Amplify user session not present
+      // Amplify user session not present or failed to fetch
     }
 
-    const hasDemoOverride = sessionStorage.getItem('saarthi_demo_override') === 'true' || import.meta.env.VITE_DEMO_MODE === 'true';
-    if (hasDemoOverride) {
+    // Only authenticate via demo mode if both config and explicit user opt-in exist
+    if (isDemoExplicitlyActive()) {
       setIsAuthenticated(true);
       return true;
     }
@@ -60,7 +74,10 @@ export function useSaarthiState() {
   const fetchState = async () => {
     try {
       const authed = await checkAuth();
-      if (!authed) return;
+      if (!authed) {
+        setIsAuthenticated(false);
+        return;
+      }
 
       const headers = await getAuthHeaders();
       const res = await fetch("http://localhost:3001/api/state", { headers });
@@ -74,7 +91,10 @@ export function useSaarthiState() {
         }
         console.warn("Could not fetch state from backend:", res.status);
       }
-    } catch (e) {
+    } catch (e: any) {
+      if (e?.message?.includes('Authentication required')) {
+        setIsAuthenticated(false);
+      }
       console.error("Failed to fetch state:", e);
     }
   };
@@ -83,14 +103,17 @@ export function useSaarthiState() {
     try {
       const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
       if (tz) {
+        const headers = await getAuthHeaders({ "Content-Type": "application/json" });
         await fetch("http://localhost:3001/api/preferences/timezone", {
           method: "PUT",
-          headers: await getAuthHeaders({ "Content-Type": "application/json" }),
+          headers,
           body: JSON.stringify({ timezone: tz })
         });
       }
-    } catch (e) {
-      console.error("Failed to sync timezone:", e);
+    } catch (e: any) {
+      if (!e?.message?.includes('Authentication required')) {
+        console.error("Failed to sync timezone:", e);
+      }
     }
   };
 
@@ -118,13 +141,25 @@ export function useSaarthiState() {
     runCinematicSequence();
     
     try {
+      const headers = await getAuthHeaders({ "Content-Type": "application/json" });
       const response = await fetch("http://localhost:3001/chat", {
         method: "POST",
-        headers: await getAuthHeaders({ "Content-Type": "application/json" }),
+        headers,
         body: JSON.stringify({ message: text.trim(), history: messages.filter(m => m.role !== 'agent') })
       });
       
       const reqId = response.headers.get("X-Request-ID") || "unknown";
+
+      if (response.status === 401) {
+        setIsAuthenticated(false);
+        setMessages(prev => [...prev, {
+          role: "agent",
+          content: `❌ Authentication Required\n\nYour session has expired or is invalid. Please sign in again.\n\nRequest ID: ${reqId}`,
+          isError: true,
+          requestId: reqId
+        }]);
+        return;
+      }
       
       let data;
       try {
@@ -155,9 +190,12 @@ export function useSaarthiState() {
       
       fetchState();
     } catch (err: any) {
+      if (err?.message?.includes('Authentication required')) {
+        setIsAuthenticated(false);
+      }
       setMessages(prev => [...prev, { 
         role: "agent", 
-        content: `❌ Network or System Error\n\n[NETWORK_ERROR]\n${err.message || "Could not reach the execution engine."}`,
+        content: `❌ ${err?.message?.includes('Authentication required') ? 'Authentication Required' : 'Network or System Error'}\n\n${err.message || "Could not reach the execution engine."}`,
         isError: true
       }]);
     } finally {
@@ -170,11 +208,18 @@ export function useSaarthiState() {
     if (loading) return;
     setLoading(true);
     try {
+      const headers = await getAuthHeaders();
       const response = await fetch(`http://localhost:3001/api/commitments/${id}/approve`, { 
         method: "POST", 
-        headers: await getAuthHeaders() 
+        headers 
       });
       const reqId = response.headers.get("X-Request-ID") || "unknown";
+
+      if (response.status === 401) {
+        setIsAuthenticated(false);
+        setMessages(prev => [...prev, { role: "agent", content: `❌ Authentication Required\n\nYour session has expired or is invalid. Please sign in again.\n\nRequest ID: ${reqId}` }]);
+        return;
+      }
       
       let data;
       try { data = await response.json(); } catch (e) { throw new Error("Invalid server response format."); }
@@ -187,7 +232,10 @@ export function useSaarthiState() {
       
       fetchState();
     } catch (err: any) {
-      setMessages(prev => [...prev, { role: "agent", content: `❌ Network Error\n\n[NETWORK_ERROR]\n${err.message || "Failed to reach server."}` }]);
+      if (err?.message?.includes('Authentication required')) {
+        setIsAuthenticated(false);
+      }
+      setMessages(prev => [...prev, { role: "agent", content: `❌ ${err?.message?.includes('Authentication required') ? 'Authentication Required' : 'Network Error'}\n\n${err.message || "Failed to reach server."}` }]);
     } finally {
       setLoading(false);
     }
@@ -197,12 +245,19 @@ export function useSaarthiState() {
     if (loading) return;
     setLoading(true);
     try {
+      const headers = await getAuthHeaders({ "Content-Type": "application/json" });
       const response = await fetch(`http://localhost:3001/api/plans/${id}/approve`, {
         method: "POST", 
-        headers: await getAuthHeaders({ "Content-Type": "application/json" }),
+        headers,
         body: JSON.stringify({ expectedVersion: version })
       });
       const reqId = response.headers.get("X-Request-ID") || "unknown";
+
+      if (response.status === 401) {
+        setIsAuthenticated(false);
+        setMessages(prev => [...prev, { role: "agent", content: `❌ Authentication Required\n\nYour session has expired or is invalid. Please sign in again.\n\nRequest ID: ${reqId}` }]);
+        return;
+      }
       
       let data;
       try { data = await response.json(); } catch (e) { throw new Error("Invalid server response format."); }
@@ -221,7 +276,10 @@ export function useSaarthiState() {
       
       fetchState();
     } catch (err: any) {
-      setMessages(prev => [...prev, { role: "agent", content: `❌ Network Error\n\n[NETWORK_ERROR]\n${err.message || "Failed to reach server."}` }]);
+      if (err?.message?.includes('Authentication required')) {
+        setIsAuthenticated(false);
+      }
+      setMessages(prev => [...prev, { role: "agent", content: `❌ ${err?.message?.includes('Authentication required') ? 'Authentication Required' : 'Network Error'}\n\n${err.message || "Failed to reach server."}` }]);
     } finally {
       setLoading(false);
     }
@@ -231,12 +289,19 @@ export function useSaarthiState() {
     if (loading) return;
     setLoading(true);
     try {
+      const headers = await getAuthHeaders({ "Content-Type": "application/json" });
       const response = await fetch(`http://localhost:3001/api/plans/${id}/reject`, {
         method: "POST", 
-        headers: await getAuthHeaders({ "Content-Type": "application/json" }),
+        headers,
         body: JSON.stringify({ expectedVersion: version, reason: reason || "User rejected proposed schedule" })
       });
       const reqId = response.headers.get("X-Request-ID") || "unknown";
+
+      if (response.status === 401) {
+        setIsAuthenticated(false);
+        setMessages(prev => [...prev, { role: "agent", content: `❌ Authentication Required\n\nYour session has expired or is invalid. Please sign in again.\n\nRequest ID: ${reqId}` }]);
+        return;
+      }
       
       let data;
       try { data = await response.json(); } catch (e) { throw new Error("Invalid server response format."); }
@@ -255,7 +320,10 @@ export function useSaarthiState() {
       
       fetchState();
     } catch (err: any) {
-      setMessages(prev => [...prev, { role: "agent", content: `❌ Network Error\n\n[NETWORK_ERROR]\n${err.message || "Failed to reach server."}` }]);
+      if (err?.message?.includes('Authentication required')) {
+        setIsAuthenticated(false);
+      }
+      setMessages(prev => [...prev, { role: "agent", content: `❌ ${err?.message?.includes('Authentication required') ? 'Authentication Required' : 'Network Error'}\n\n${err.message || "Failed to reach server."}` }]);
     } finally {
       setLoading(false);
     }
@@ -265,14 +333,22 @@ export function useSaarthiState() {
     if (loading) return;
     setLoading(true);
     try {
+      const headers = await getAuthHeaders();
       const response = await fetch(`http://localhost:3001/api/commitments/${id}/complete`, {
         method: "POST",
-        headers: await getAuthHeaders()
+        headers
       });
+      if (response.status === 401) {
+        setIsAuthenticated(false);
+        return;
+      }
       if (response.ok) {
         await fetchState();
       }
-    } catch (err) {
+    } catch (err: any) {
+      if (err?.message?.includes('Authentication required')) {
+        setIsAuthenticated(false);
+      }
       console.error("Failed to complete commitment:", err);
     } finally {
       setLoading(false);

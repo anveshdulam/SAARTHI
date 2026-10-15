@@ -25,6 +25,9 @@ export function Memory() {
         headers,
         body: JSON.stringify({ type, value, description })
       });
+      if (res.status === 401) {
+        throw new Error('Authentication required. Session expired. Please sign in again.');
+      }
       if (!res.ok) {
         const errData = await res.json().catch(() => ({ error: 'Failed to save' }));
         throw new Error(errData.error || 'Failed to save constraint');

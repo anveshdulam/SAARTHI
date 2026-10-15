@@ -59,10 +59,13 @@ export function Sidebar({ onCloseMobile }: SidebarProps) {
         <button 
           onClick={async () => {
             try {
+              sessionStorage.removeItem('saarthi_demo_override');
               await signOut();
-              window.location.reload();
             } catch (err) {
               console.error(err);
+            } finally {
+              sessionStorage.removeItem('saarthi_demo_override');
+              window.location.reload();
             }
           }}
           style={{ background: 'none', border: 'none', color: 'var(--text-secondary-dark)', cursor: 'pointer', padding: '6px', minHeight: '44px', minWidth: '44px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}

@@ -47,12 +47,21 @@
 
 ## 3. Technology Stack
 
-- **AI Reasoning:** Amazon Bedrock (`anthropic.claude-sonnet-4-6` via Converse API tool-use loop)
-- **Identity & Auth:** Amazon Cognito User Pool + AWS Amplify Auth (with seamless `DEMO_MODE` for evaluating judges)
+- **AI Reasoning:** Amazon Bedrock (`anthropic.claude-sonnet-4-6` via Converse API tool-use loop) with deterministic MCP fallback
+- **Identity & Auth:** Amazon Cognito User Pool + AWS Amplify Auth (with explicit opt-in `DEMO_MODE` for evaluating judges)
 - **Protocol:** Model Context Protocol (MCP) spec **2025-11-25** over **Streamable HTTP** (`/mcp` endpoint)
 - **Backend:** Node.js, Express, TypeScript, `@aws-sdk/client-bedrock-runtime`, `@modelcontextprotocol/sdk`
 - **Frontend:** React 19, Vite, custom editorial design system (Warm Ivory workspace `#F7F6F2`, dark shell `#15171A`, saffron accent `#C79536`, restrained blue `#5868D8`)
 - **Persistence:** SQLite with Write-Ahead Logging (WAL) and ACID transactions
+
+### 3.1 Transparent Integration Architecture: Live AWS vs Fallback Mode
+
+To guarantee complete transparency and effortless judging, SAARTHI explicitly separates live AWS cloud integration from local deterministic execution:
+
+| Subsystem | Live AWS Path | Local Deterministic Path | How to Exercise / Evaluate |
+| :--- | :--- | :--- | :--- |
+| **AI Reasoning (Bedrock)** | AWS SDK `@aws-sdk/client-bedrock-runtime` calls the Converse API on `anthropic.claude-sonnet-4-6`. Parses tool-use requests and iterates in an autonomous agentic loop against MCP tools. | When AWS credentials are absent or Bedrock is unreachable, the engine logs `EXECUTION_ERROR` and runs a local deterministic agent that calls the **real MCP tools** (`assess_commitment_risk`, `create_schedule_proposal`) over Streamable HTTP. All output is transparently prefixed with `[DEMO MODE]`. | **Live Bedrock:** Export `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and `AWS_REGION=us-east-1` in `.env`.<br>**Local Evaluation:** Leave AWS keys blank; system runs autonomously with full MCP tool fidelity. |
+| **Authentication (Cognito)** | AWS Amplify Auth performs real SRP authentication against Amazon Cognito User Pool `ap-southeast-2_hWjcy3ZOb`. Express backend verifies RSA signatures using `CognitoJwtVerifier`. | Explicit demo opt-in button on the Landing Page sets `saarthi_demo_override=true` in `sessionStorage` (gated by `VITE_DEMO_MODE=true`). Express accepts `Bearer demo-token` mapped to `demo-user-id`. | **Live Cognito:** Sign up or sign in using any valid email/password on the landing modal.<br>**Demo Mode:** Click `"⚡ Continue in Demo Mode (No Login Required)"`. Sessions never silently fall back. |
 
 ---
 
