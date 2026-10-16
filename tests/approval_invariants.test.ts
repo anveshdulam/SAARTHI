@@ -52,8 +52,9 @@ async function runApprovalInvariantsTests() {
     }
 
     // Check 1B: Verify Backend Audit API reports all forbidden tools as NOT model exposed
+    const testAuthToken = process.env.SAARTHI_AUTH_TOKEN || "test-secure-token-123";
     const auditRes = await fetch("http://localhost:3001/api/audit/protocol", {
-      headers: { Authorization: "Bearer demo-token" }
+      headers: { Authorization: `Bearer ${testAuthToken}` }
     });
     if (!auditRes.ok) {
       throw new Error(`Failed to query /api/audit/protocol (HTTP ${auditRes.status})`);

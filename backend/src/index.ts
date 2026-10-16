@@ -101,8 +101,15 @@ async function authenticateAndGetUser(req: express.Request, res: express.Respons
   }
   const token = authHeader.split(" ")[1];
 
+  if (process.env.SAARTHI_AUTH_TOKEN && token === process.env.SAARTHI_AUTH_TOKEN) {
+    const systemUserId = "system-audit-runner";
+    const context = requestContext.getStore();
+    if (context) context.userId = systemUserId;
+    return systemUserId;
+  }
+
   const isDemoMode = process.env.DEMO_MODE === "true";
-  if (isDemoMode && (token === "demo-token" || token === (process.env.SAARTHI_AUTH_TOKEN || "demo-token"))) {
+  if (isDemoMode && token === "demo-token") {
     const demoUserId = "demo-user-id";
     const context = requestContext.getStore();
     if (context) context.userId = demoUserId;

@@ -6,7 +6,14 @@ import { CreateScheduleProposalResultSchema } from "./schemas.js";
 import { format } from "date-fns";
 import { toZonedTime } from "date-fns-tz";
 
-const bedrock = new BedrockRuntimeClient({ region: process.env.AWS_REGION || "us-east-1" });
+const bedrock = new BedrockRuntimeClient({
+  region: process.env.AWS_REGION || "us-east-1",
+  credentials: (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY) ? {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+    ...(process.env.AWS_SESSION_TOKEN ? { sessionToken: process.env.AWS_SESSION_TOKEN } : {})
+  } : undefined
+});
 async function recordAgentEvent(userId: string, type: string, entity: string, newState: string) {
   try {
     await fetch("http://localhost:3002/internal/events", {
@@ -182,13 +189,13 @@ export async function askAgent(userId: string, userMessage: string, history: Mes
         duration_ms
       });
 
-      // DEMO MODE RULE: Deterministic fallback allowed ONLY if MCP is available and it doesn't fabricate success.
-      let simulatedReply = "[DEMO MODE] Running via local deterministic agent. ";
+      // Fallback allowed if MCP is available and it doesn't fabricate success
+      const isDemo = process.env.DEMO_MODE === "true";
+      let simulatedReply = isDemo 
+        ? "[DEMO MODE] Running via local deterministic agent. " 
+        : "[DETERMINISTIC FALLBACK] Executing via deterministic MCP engine. ";
       const userMsgLower = userMessage.toLowerCase();
       let fallbackSuccess = false;
-
-      // Log failure event
-      await recordAgentEvent(userId, "EXECUTION_ERROR", "agent", JSON.stringify({ error: errorCode, details: error.message }));
 
       if (userMsgLower.includes("missed") || userMsgLower.includes("change") || userMsgLower.includes("replan") || userMsgLower.includes("fix") || userMsgLower.includes("schedule")) {
         try {
@@ -208,7 +215,7 @@ export async function askAgent(userId: string, userMessage: string, history: Mes
 
           let planVersion = 1;
           let totalBlocks = 0;
-          let explanation = "Rescheduled past-due sessions while preserving your 10 PM cutoff.";
+          let explanation = "Rescheduled past-due sessions while preserving your cutoff time.";
           try {
             const rawPlanText = planRes.content?.find((c: any) => c.type === 'text')?.text || "{}";
             const planObj = JSON.parse(rawPlanText);
@@ -247,6 +254,21 @@ export async function askAgent(userId: string, userMessage: string, history: Mes
           logger.error("Fallback tool execution failed", { error: e, tool_name: "list_commitments" });
           simulatedReply = "Execution services are currently unavailable. No actions were performed.";
         }
+      }
+
+      // Record appropriate audit event based on fallback outcome
+      if (fallbackSuccess) {
+        await recordAgentEvent(userId, "FALLBACK_PLANNER_ACTIVATED", "agent", JSON.stringify({
+          status: "SUCCESS",
+          note: "Amazon Bedrock credentials unconfigured or unreachable. Successfully executed via deterministic MCP planner.",
+          toolsExecuted: executedTools
+        }));
+      } else {
+        await recordAgentEvent(userId, "EXECUTION_ERROR", "agent", JSON.stringify({ 
+          error: errorCode, 
+          details: error.message,
+          fallbackFailed: true 
+        }));
       }
 
       return {

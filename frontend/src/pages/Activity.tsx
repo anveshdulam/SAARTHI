@@ -231,66 +231,119 @@ export function Activity() {
         </div>
 
         {/* State Payload Inspector Modal */}
-        {selectedEvent && (
-          <div style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0, 0, 0, 0.65)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1000,
-            padding: '20px'
-          }}>
-            <div className="card" style={{ maxWidth: '640px', width: '100%', padding: '32px', background: 'var(--workspace-elevated)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                <div>
-                  <span className="badge success" style={{ marginBottom: '6px' }}>{selectedEvent.type}</span>
-                  <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 600 }}>Event Payload Inspector</h3>
-                </div>
-                <button className="button ghost" onClick={() => setSelectedEvent(null)} style={{ padding: '4px 8px' }}>✕</button>
-              </div>
-              
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', fontSize: '13px' }}>
-                <div><strong>Event ID:</strong> <code style={{ fontSize: '11.5px' }}>{selectedEvent.id}</code></div>
-                <div><strong>Timestamp:</strong> {new Date(selectedEvent.created_at).toISOString()}</div>
-                <div><strong>Entity:</strong> {selectedEvent.entity || 'N/A'}</div>
-                <div><strong>Plan Version:</strong> {selectedEvent.plan_version || 'None'}</div>
-                
-                <div>
-                  <strong>Recorded State JSON:</strong>
-                  <pre style={{
-                    marginTop: '8px',
-                    background: 'var(--ink)',
-                    color: 'var(--text-primary-dark)',
-                    padding: '16px',
-                    borderRadius: '8px',
-                    fontSize: '12px',
-                    overflowX: 'auto',
-                    maxHeight: '220px',
-                    overflowY: 'auto',
-                    whiteSpace: 'pre-wrap',
-                    overflowWrap: 'anywhere'
-                  }}>
-                    {(() => {
-                      try {
-                        return JSON.stringify(JSON.parse(selectedEvent.new_state), null, 2);
-                      } catch {
-                        return selectedEvent.new_state || 'No state recorded.';
-                      }
-                    })()}
-                  </pre>
-                </div>
-              </div>
+        {selectedEvent && (() => {
+          const isErr = selectedEvent.type.includes('ERROR') || selectedEvent.type.includes('FAILED') || selectedEvent.type.includes('MISSED');
+          const isSuccess = selectedEvent.type.includes('ACCEPTED') || selectedEvent.type.includes('APPROVED');
 
-              <div style={{ marginTop: '24px', display: 'flex', justifyContent: 'flex-end' }}>
-                <button className="button primary touch-target" onClick={() => setSelectedEvent(null)}>
-                  Close Inspector
-                </button>
+          return (
+            <div style={{
+              position: 'fixed',
+              inset: 0,
+              background: 'rgba(0, 0, 0, 0.78)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 1000,
+              padding: '20px',
+              backdropFilter: 'blur(6px)'
+            }}>
+              <div style={{
+                maxWidth: '640px',
+                width: '100%',
+                padding: '28px 32px',
+                background: '#191B1F',
+                color: '#ECEEF1',
+                borderRadius: '14px',
+                border: '1px solid #2E323B',
+                boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.7)'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
+                  <div>
+                    <span style={{
+                      display: 'inline-block',
+                      padding: '3px 10px',
+                      borderRadius: '6px',
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      fontFamily: 'var(--font-mono)',
+                      letterSpacing: '0.04em',
+                      marginBottom: '8px',
+                      background: isErr ? 'rgba(239, 68, 68, 0.18)' : isSuccess ? 'rgba(16, 185, 129, 0.18)' : 'rgba(232, 179, 110, 0.18)',
+                      color: isErr ? '#F87171' : isSuccess ? '#34D399' : '#FBBF24',
+                      border: isErr ? '1px solid rgba(239, 68, 68, 0.4)' : isSuccess ? '1px solid rgba(16, 185, 129, 0.4)' : '1px solid rgba(232, 179, 110, 0.4)'
+                    }}>
+                      {selectedEvent.type}
+                    </span>
+                    <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 600, color: '#FFFFFF' }}>Event Payload Inspector</h3>
+                  </div>
+                  <button 
+                    onClick={() => setSelectedEvent(null)} 
+                    style={{ background: 'none', border: 'none', color: '#9DA3AE', fontSize: '20px', cursor: 'pointer', padding: '4px 8px', lineHeight: 1 }}
+                    aria-label="Close"
+                  >
+                    ✕
+                  </button>
+                </div>
+                
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '13px' }}>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+                    <span style={{ color: '#9DA3AE', width: '110px', flexShrink: 0, fontWeight: 500 }}>Event ID:</span>
+                    <code style={{ fontSize: '11.5px', background: '#111315', padding: '3px 8px', borderRadius: '5px', color: '#E8B36E', border: '1px solid #23272F' }}>{selectedEvent.id}</code>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+                    <span style={{ color: '#9DA3AE', width: '110px', flexShrink: 0, fontWeight: 500 }}>Timestamp:</span>
+                    <span style={{ color: '#ECEEF1', fontFamily: 'var(--font-mono)', fontSize: '12.5px' }}>{new Date(selectedEvent.created_at).toISOString()}</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+                    <span style={{ color: '#9DA3AE', width: '110px', flexShrink: 0, fontWeight: 500 }}>Entity:</span>
+                    <span style={{ color: '#ECEEF1', textTransform: 'capitalize' }}>{selectedEvent.entity || 'N/A'}</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+                    <span style={{ color: '#9DA3AE', width: '110px', flexShrink: 0, fontWeight: 500 }}>Plan Version:</span>
+                    <span style={{ color: '#ECEEF1' }}>{selectedEvent.plan_version ? `v0${selectedEvent.plan_version}` : 'None'}</span>
+                  </div>
+                  
+                  <div style={{ marginTop: '6px' }}>
+                    <span style={{ color: '#9DA3AE', fontWeight: 500, display: 'block', marginBottom: '8px' }}>Recorded State JSON:</span>
+                    <pre style={{
+                      background: '#101215',
+                      border: '1px solid #272B33',
+                      color: '#ECEEF1',
+                      padding: '16px',
+                      borderRadius: '8px',
+                      fontSize: '12.5px',
+                      fontFamily: 'var(--font-mono)',
+                      overflowX: 'auto',
+                      maxHeight: '220px',
+                      overflowY: 'auto',
+                      whiteSpace: 'pre-wrap',
+                      overflowWrap: 'anywhere',
+                      lineHeight: 1.55
+                    }}>
+                      {(() => {
+                        try {
+                          return JSON.stringify(JSON.parse(selectedEvent.new_state), null, 2);
+                        } catch {
+                          return selectedEvent.new_state || 'No state recorded.';
+                        }
+                      })()}
+                    </pre>
+                  </div>
+                </div>
+
+                <div style={{ marginTop: '24px', display: 'flex', justifyContent: 'flex-end' }}>
+                  <button 
+                    className="button primary touch-target" 
+                    onClick={() => setSelectedEvent(null)}
+                    style={{ background: '#E8B36E', color: '#111315', border: 'none', fontWeight: 650, borderRadius: '8px', padding: '10px 22px', fontSize: '13px' }}
+                  >
+                    Close Inspector
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
       </div>
     </MainLayout>

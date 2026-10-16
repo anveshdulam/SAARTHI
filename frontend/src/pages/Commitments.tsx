@@ -281,29 +281,70 @@ export function Commitments() {
           <div style={{
             position: 'fixed',
             inset: 0,
-            background: 'rgba(0, 0, 0, 0.6)',
+            background: 'rgba(0, 0, 0, 0.78)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             zIndex: 1000,
-            padding: '20px'
+            padding: '20px',
+            backdropFilter: 'blur(6px)'
           }}>
-            <div className="card" style={{ maxWidth: '520px', width: '100%', padding: '32px', background: 'var(--workspace-elevated)' }}>
+            <div style={{
+              maxWidth: '520px',
+              width: '100%',
+              padding: '28px 32px',
+              background: '#191B1F',
+              color: '#ECEEF1',
+              borderRadius: '14px',
+              border: '1px solid #2E323B',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.7)'
+            }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 600 }}>Commitment Properties</h3>
-                <button className="button ghost" onClick={() => setSelectedCommitment(null)} style={{ padding: '4px 8px' }}>✕</button>
+                <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 600, color: '#FFFFFF' }}>Commitment Properties</h3>
+                <button 
+                  onClick={() => setSelectedCommitment(null)} 
+                  style={{ background: 'none', border: 'none', color: '#9DA3AE', fontSize: '20px', cursor: 'pointer', padding: '4px 8px', lineHeight: 1 }}
+                  aria-label="Close"
+                >
+                  ✕
+                </button>
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '13.5px' }}>
-                <div><strong>ID:</strong> <code style={{ fontSize: '12px' }}>{selectedCommitment.id}</code></div>
-                <div><strong>Title:</strong> {selectedCommitment.title}</div>
-                <div><strong>Type:</strong> {selectedCommitment.type}</div>
-                <div><strong>Status:</strong> {selectedCommitment.status}</div>
-                <div><strong>Start Time:</strong> {selectedCommitment.start_time || 'None'}</div>
-                <div><strong>End Time:</strong> {selectedCommitment.end_time || 'None'}</div>
-                <div><strong>Created:</strong> {selectedCommitment.created_at}</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '13px' }}>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+                  <span style={{ color: '#9DA3AE', width: '90px', flexShrink: 0, fontWeight: 500 }}>ID:</span>
+                  <code style={{ fontSize: '11.5px', background: '#111315', padding: '3px 8px', borderRadius: '5px', color: '#E8B36E', border: '1px solid #23272F' }}>{selectedCommitment.id}</code>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+                  <span style={{ color: '#9DA3AE', width: '90px', flexShrink: 0, fontWeight: 500 }}>Title:</span>
+                  <span style={{ color: '#FFFFFF', fontWeight: 600 }}>{selectedCommitment.title}</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+                  <span style={{ color: '#9DA3AE', width: '90px', flexShrink: 0, fontWeight: 500 }}>Type:</span>
+                  <span style={{ color: '#ECEEF1', textTransform: 'uppercase', fontFamily: 'var(--font-mono)', fontSize: '12px' }}>{selectedCommitment.type}</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+                  <span style={{ color: '#9DA3AE', width: '90px', flexShrink: 0, fontWeight: 500 }}>Status:</span>
+                  <span style={{ color: '#ECEEF1', textTransform: 'uppercase', fontFamily: 'var(--font-mono)', fontSize: '12px' }}>{selectedCommitment.status}</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+                  <span style={{ color: '#9DA3AE', width: '90px', flexShrink: 0, fontWeight: 500 }}>Start Time:</span>
+                  <span style={{ color: '#ECEEF1', fontFamily: 'var(--font-mono)', fontSize: '12px' }}>{selectedCommitment.start_time || 'None'}</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+                  <span style={{ color: '#9DA3AE', width: '90px', flexShrink: 0, fontWeight: 500 }}>End Time:</span>
+                  <span style={{ color: '#ECEEF1', fontFamily: 'var(--font-mono)', fontSize: '12px' }}>{selectedCommitment.end_time || 'None'}</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+                  <span style={{ color: '#9DA3AE', width: '90px', flexShrink: 0, fontWeight: 500 }}>Created:</span>
+                  <span style={{ color: '#ECEEF1', fontFamily: 'var(--font-mono)', fontSize: '12px' }}>{selectedCommitment.created_at}</span>
+                </div>
               </div>
               <div style={{ marginTop: '24px', display: 'flex', justifyContent: 'flex-end' }}>
-                <button className="button primary touch-target" onClick={() => setSelectedCommitment(null)}>
+                <button 
+                  className="button primary touch-target" 
+                  onClick={() => setSelectedCommitment(null)}
+                  style={{ background: '#E8B36E', color: '#111315', border: 'none', fontWeight: 650, borderRadius: '8px', padding: '10px 22px', fontSize: '13px' }}
+                >
                   Close
                 </button>
               </div>
