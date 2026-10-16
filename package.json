@@ -7,12 +7,14 @@
     "doc": "docs"
   },
   "scripts": {
+    "start": "npm run dev",
+    "dev": "concurrently -n \"mcp,backend,frontend\" -c \"cyan,magenta,green\" \"npm run dev:mcp\" \"npm run dev:backend\" \"npm run dev:frontend\"",
     "dev:frontend": "npm run dev -w frontend",
     "dev:backend": "npm run dev -w backend",
     "dev:mcp": "npm run dev -w mcp-server",
-    "dev": "concurrently \"npm run dev:mcp\" \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "build": "npm run build -w frontend && npm run build -w backend && npm run build -w mcp-server",
     "seed": "npx tsx mcp-server/src/seed.ts",
-    "test": "npx tsx tests/final_verification.ts"
+    "test": "npx tsx tests/approval_invariants.test.ts"
   },
   "keywords": [],
   "author": "",
