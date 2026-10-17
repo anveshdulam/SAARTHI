@@ -42,14 +42,16 @@ app.use((req, res, next) => {
   requestContext.run({ requestId: reqId }, () => {
     res.on("finish", () => {
       const duration_ms = performance.now() - start;
-      const isError = res.statusCode >= 400;
-      logger[isError ? "error" : "info"]("HTTP request completed", {
+      const is5xx = res.statusCode >= 500;
+      const is4xx = res.statusCode >= 400 && res.statusCode < 500;
+      const logLevel = is5xx ? "error" : is4xx ? "warn" : "info";
+      logger[logLevel]("HTTP request completed", {
         operation: "http.request",
         method: req.method,
         route: req.originalUrl || req.url,
         status_code: res.statusCode,
         duration_ms,
-        success: !isError
+        success: !is5xx && !is4xx
       });
     });
     next();
@@ -128,7 +130,7 @@ async function authenticateAndGetUser(req: express.Request, res: express.Respons
     if (context) context.userId = userId;
     return userId;
   } catch (err) {
-    logger.error("Token verification failed", { error: err });
+    logger.warn("Token verification failed (expired or unauthenticated session)", { error: (err as any)?.message || err });
     res.status(401).json({ error: "Unauthorized access. Invalid token." });
     return null;
   }

@@ -156,6 +156,110 @@ export async function askAgent(userId: string, userMessage: string, history: Mes
   const executedTools: string[] = [];
   let actionPerformed = false;
 
+  const isAwsConfigured = Boolean(
+    (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY) ||
+    process.env.AWS_PROFILE
+  );
+
+  const runDeterministicPlanner = async (reasonNotice: string, errorCode?: string, rawError?: any): Promise<AgentResponse> => {
+    const isDemo = process.env.DEMO_MODE === "true";
+    let simulatedReply = isDemo 
+      ? "[DEMO MODE] Running via local deterministic agent. " 
+      : "[DETERMINISTIC FALLBACK] Executing via deterministic MCP engine. ";
+    const userMsgLower = userMessage.toLowerCase();
+    let fallbackSuccess = false;
+
+    if (userMsgLower.includes("missed") || userMsgLower.includes("change") || userMsgLower.includes("replan") || userMsgLower.includes("fix") || userMsgLower.includes("schedule")) {
+      try {
+        await mcp.callTool({ name: "assess_commitment_risk", arguments: { userId, currentTime: currentTimeUtcStr } });
+        executedTools.push("assess_commitment_risk");
+        const planRes: any = await mcp.callTool({ 
+          name: "create_schedule_proposal", 
+          arguments: { 
+            userId, 
+            currentTimeUtc: currentTimeUtcStr, 
+            planningDate: localDateStr,
+            cutoffLocalTime: cutoffTime
+          } 
+        });
+        executedTools.push("create_schedule_proposal");
+        actionPerformed = true;
+
+        let planVersion = 1;
+        let totalBlocks = 0;
+        let explanation = "Rescheduled past-due sessions while preserving your cutoff time.";
+        try {
+          const rawPlanText = planRes.content?.find((c: any) => c.type === 'text')?.text || "{}";
+          const planObj = JSON.parse(rawPlanText);
+          if (planObj.version) planVersion = planObj.version;
+          if (planObj.totalScheduledBlocks) totalBlocks = planObj.totalScheduledBlocks;
+          if (planObj.explanation) explanation = planObj.explanation;
+        } catch {
+          // keep defaults
+        }
+
+        simulatedReply += `I assessed your schedule risks and generated proposed schedule Plan v${planVersion} (${totalBlocks} blocks). ${explanation}\n\nPlease review and authorize this proposal on the Living Plans page.`;
+        fallbackSuccess = true;
+      } catch (e: any) {
+        logger.error("Deterministic planning failed", { error: e, tool_name: "create_schedule_proposal" });
+        simulatedReply = "Execution services are currently unavailable. No actions were performed.";
+      }
+    } else {
+      try {
+        const commsRes: any = await mcp.callTool({ name: "list_commitments", arguments: { userId } });
+        executedTools.push("list_commitments");
+        const constraintsRes: any = await mcp.callTool({ name: "list_constraints", arguments: { userId } });
+        executedTools.push("list_constraints");
+        
+        let commCount = 0;
+        let constraintCount = 0;
+        try {
+          const comms = JSON.parse(commsRes.content?.find((c: any) => c.type === 'text')?.text || "[]");
+          const constraints = JSON.parse(constraintsRes.content?.find((c: any) => c.type === 'text')?.text || "[]");
+          commCount = comms.length;
+          constraintCount = constraints.length;
+        } catch {}
+
+        simulatedReply += `You currently have ${commCount} active commitments and ${constraintCount} stored constraints in your living schedule model.`;
+        fallbackSuccess = true;
+      } catch (e: any) {
+        logger.error("Deterministic query failed", { error: e, tool_name: "list_commitments" });
+        simulatedReply = "Execution services are currently unavailable. No actions were performed.";
+      }
+    }
+
+    if (fallbackSuccess) {
+      await recordAgentEvent(userId, "FALLBACK_PLANNER_ACTIVATED", "agent", JSON.stringify({
+        status: "SUCCESS",
+        note: reasonNotice,
+        toolsExecuted: executedTools
+      }));
+    } else {
+      await recordAgentEvent(userId, "EXECUTION_ERROR", "agent", JSON.stringify({ 
+        error: errorCode || "FALLBACK_FAILED", 
+        details: rawError?.message || "Deterministic planner failed.",
+        fallbackFailed: true 
+      }));
+    }
+
+    return {
+      success: fallbackSuccess,
+      errorCode: fallbackSuccess ? undefined : (errorCode || "EXECUTION_FAILED"),
+      reply: simulatedReply,
+      history: messages,
+      toolsExecuted: executedTools,
+      actionPerformed
+    };
+  };
+
+  if (!isAwsConfigured) {
+    logger.info("Bedrock AWS credentials unconfigured in .env. Executing via local deterministic MCP engine.", {
+      operation: "agent.deterministic",
+      user_id: userId
+    });
+    return await runDeterministicPlanner("Amazon Bedrock AWS credentials unconfigured. Executed via deterministic MCP engine.");
+  }
+
   const MAX_ITERATIONS = 5;
   let iterations = 0;
 
@@ -180,105 +284,19 @@ export async function askAgent(userId: string, userMessage: string, history: Mes
       if (error.name === "TimeoutError") errorCode = "BEDROCK_TIMEOUT";
 
       const duration_ms = performance.now() - bedrockStart;
-      logger.error("Bedrock request failed", { 
-        error, 
+      logger.warn("Bedrock unavailable, failing over to deterministic MCP planner", { 
         error_code: errorCode, 
         error_name: error.name,
+        error_message: error.message,
         operation: "bedrock.converse",
-        retryable: true,
         duration_ms
       });
 
-      // Fallback allowed if MCP is available and it doesn't fabricate success
-      const isDemo = process.env.DEMO_MODE === "true";
-      let simulatedReply = isDemo 
-        ? "[DEMO MODE] Running via local deterministic agent. " 
-        : "[DETERMINISTIC FALLBACK] Executing via deterministic MCP engine. ";
-      const userMsgLower = userMessage.toLowerCase();
-      let fallbackSuccess = false;
-
-      if (userMsgLower.includes("missed") || userMsgLower.includes("change") || userMsgLower.includes("replan") || userMsgLower.includes("fix") || userMsgLower.includes("schedule")) {
-        try {
-          await mcp.callTool({ name: "assess_commitment_risk", arguments: { userId, currentTime: currentTimeUtcStr } });
-          executedTools.push("assess_commitment_risk");
-          const planRes: any = await mcp.callTool({ 
-            name: "create_schedule_proposal", 
-            arguments: { 
-              userId, 
-              currentTimeUtc: currentTimeUtcStr, 
-              planningDate: localDateStr,
-              cutoffLocalTime: cutoffTime
-            } 
-          });
-          executedTools.push("create_schedule_proposal");
-          actionPerformed = true;
-
-          let planVersion = 1;
-          let totalBlocks = 0;
-          let explanation = "Rescheduled past-due sessions while preserving your cutoff time.";
-          try {
-            const rawPlanText = planRes.content?.find((c: any) => c.type === 'text')?.text || "{}";
-            const planObj = JSON.parse(rawPlanText);
-            if (planObj.version) planVersion = planObj.version;
-            if (planObj.totalScheduledBlocks) totalBlocks = planObj.totalScheduledBlocks;
-            if (planObj.explanation) explanation = planObj.explanation;
-          } catch {
-            // keep defaults
-          }
-
-          simulatedReply += `I assessed your schedule risks and generated proposed schedule Plan v${planVersion} (${totalBlocks} blocks). ${explanation}\n\nPlease review and authorize this proposal on the Living Plans page.`;
-          fallbackSuccess = true;
-        } catch (e: any) {
-          logger.error("Fallback tool execution failed", { error: e, tool_name: "create_schedule_proposal" });
-          simulatedReply = "Execution services are currently unavailable. No actions were performed.";
-        }
-      } else {
-        try {
-          const commsRes: any = await mcp.callTool({ name: "list_commitments", arguments: { userId } });
-          executedTools.push("list_commitments");
-          const constraintsRes: any = await mcp.callTool({ name: "list_constraints", arguments: { userId } });
-          executedTools.push("list_constraints");
-          
-          let commCount = 0;
-          let constraintCount = 0;
-          try {
-            const comms = JSON.parse(commsRes.content?.find((c: any) => c.type === 'text')?.text || "[]");
-            const constraints = JSON.parse(constraintsRes.content?.find((c: any) => c.type === 'text')?.text || "[]");
-            commCount = comms.length;
-            constraintCount = constraints.length;
-          } catch {}
-
-          simulatedReply += `You currently have ${commCount} active commitments and ${constraintCount} stored constraints in your living schedule model.`;
-          fallbackSuccess = true;
-        } catch (e: any) {
-          logger.error("Fallback tool execution failed", { error: e, tool_name: "list_commitments" });
-          simulatedReply = "Execution services are currently unavailable. No actions were performed.";
-        }
-      }
-
-      // Record appropriate audit event based on fallback outcome
-      if (fallbackSuccess) {
-        await recordAgentEvent(userId, "FALLBACK_PLANNER_ACTIVATED", "agent", JSON.stringify({
-          status: "SUCCESS",
-          note: "Amazon Bedrock credentials unconfigured or unreachable. Successfully executed via deterministic MCP planner.",
-          toolsExecuted: executedTools
-        }));
-      } else {
-        await recordAgentEvent(userId, "EXECUTION_ERROR", "agent", JSON.stringify({ 
-          error: errorCode, 
-          details: error.message,
-          fallbackFailed: true 
-        }));
-      }
-
-      return {
-        success: fallbackSuccess,
-        errorCode: fallbackSuccess ? undefined : errorCode,
-        reply: simulatedReply,
-        history: messages,
-        toolsExecuted: executedTools,
-        actionPerformed
-      };
+      return await runDeterministicPlanner(
+        `Amazon Bedrock unavailable (${errorCode}). Failing over to deterministic MCP planner.`,
+        errorCode,
+        error
+      );
     }
 
     const outputMessage = response.output?.message;
