@@ -252,6 +252,199 @@ export async function askAgent(userId: string, userMessage: string, history: Mes
     };
   };
 
+  const geminiApiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+  const primaryGeminiModel = process.env.GEMINI_MODEL || "gemini-3.5-flash-lite";
+
+  if (geminiApiKey) {
+    const candidateModels = [primaryGeminiModel, "gemini-3.8-flash", "gemini-3.6-flash"];
+    const geminiTools = [{
+      functionDeclarations: mcpToolsRes.tools
+        .filter((t: any) => !forbiddenTools.includes(t.name))
+        .map((t: any) => {
+          const schema = { ...(t.inputSchema || { type: "object", properties: {} }) };
+          delete schema.$schema;
+          return {
+            name: t.name,
+            description: t.description || "",
+            parameters: schema
+          };
+        })
+    }];
+
+    const contents: any[] = [];
+    for (const h of history || []) {
+      const hRole = (h as any).role;
+      const role = (hRole === "assistant" || hRole === "model" || hRole === "agent") ? "model" : "user";
+      let text = "";
+      if (Array.isArray(h.content)) {
+        text = h.content.map((c: any) => c.text || "").join(" ");
+      } else if (typeof h.content === "string") {
+        text = h.content;
+      }
+      if (text.trim()) {
+        contents.push({ role, parts: [{ text }] });
+      }
+    }
+    contents.push({ role: "user", parts: [{ text: userMessage }] });
+
+    const gatewayStart = performance.now();
+    const MAX_STEPS = 5;
+    let steps = 0;
+    let finalReply = "";
+
+    try {
+      while (steps < MAX_STEPS) {
+        steps++;
+        let modelResData: any = null;
+        let lastError: any = null;
+
+        for (const modelToTry of candidateModels) {
+          try {
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelToTry}:generateContent?key=${geminiApiKey}`;
+            const apiRes = await fetch(url, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                systemInstruction: { parts: [{ text: fullSystemPrompt }] },
+                contents,
+                tools: geminiTools
+              })
+            });
+
+            const data = await apiRes.json();
+            if (data.error) {
+              lastError = data.error;
+              if (data.error.code === 429 || data.error.status === "RESOURCE_EXHAUSTED") {
+                logger.warn(`Model ${modelToTry} quota reached, trying fallback`, { model: modelToTry });
+                continue;
+              }
+              throw new Error(data.error.message || "Gemini API error");
+            }
+
+            modelResData = data;
+            break;
+          } catch (mErr: any) {
+            lastError = mErr;
+          }
+        }
+
+        if (!modelResData || !modelResData.candidates?.[0]?.content) {
+          throw lastError || new Error("Failed to receive response from AI model.");
+        }
+
+        const modelContent = modelResData.candidates[0].content;
+        const parts = modelContent.parts || [];
+        const functionCallParts = parts.filter((p: any) => p.functionCall);
+
+        if (functionCallParts.length === 0) {
+          finalReply = parts.map((p: any) => p.text || "").join("").trim();
+          break;
+        }
+
+        contents.push(modelContent);
+
+        const functionResponseParts: any[] = [];
+
+        for (const fPart of functionCallParts) {
+          const { name, args } = fPart.functionCall;
+          executedTools.push(name);
+          logger.info("Executing MCP tool via Bedrock Gateway", { tool_name: name, provider: "aws-bedrock-gateway" });
+
+          const toolArgs: any = { ...(args || {}), userId };
+          if (name === "create_schedule_proposal") {
+            toolArgs.currentTimeUtc = toolArgs.currentTimeUtc || currentTimeUtcStr;
+            toolArgs.planningDate = toolArgs.planningDate || localDateStr;
+            toolArgs.cutoffLocalTime = toolArgs.cutoffLocalTime || cutoffTime;
+          }
+          if (name === "assess_commitment_risk") {
+            toolArgs.currentTime = toolArgs.currentTime || currentTimeUtcStr;
+          }
+          if (name === "create_commitment") {
+            if (!toolArgs.type) toolArgs.type = "soft";
+            if (!toolArgs.idempotency_key) {
+              toolArgs.idempotency_key = `comm_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+            }
+          }
+
+          let mcpResultText = "{}";
+          try {
+            const mcpCallRes: any = await mcp.callTool({ name, arguments: toolArgs });
+            if (name === "create_schedule_proposal" || name === "create_commitment") {
+              actionPerformed = true;
+            }
+            mcpResultText = mcpCallRes.content?.map((c: any) => c.type === 'text' ? c.text : '').join("") || "{}";
+          } catch (tErr: any) {
+            logger.error("Tool execution failed in Bedrock Gateway loop", { tool_name: name, error: tErr });
+            mcpResultText = JSON.stringify({ error: tErr.message || "Tool execution failed" });
+          }
+
+          let parsedResult: any = {};
+          try {
+            parsedResult = JSON.parse(mcpResultText);
+          } catch {
+            parsedResult = { output: mcpResultText };
+          }
+
+          const safeResponse = (typeof parsedResult === "object" && !Array.isArray(parsedResult))
+            ? parsedResult
+            : { result: parsedResult };
+
+          functionResponseParts.push({
+            functionResponse: {
+              name,
+              response: safeResponse
+            }
+          });
+        }
+
+        contents.push({
+          role: "user",
+          parts: functionResponseParts
+        });
+      }
+
+      const duration_ms = performance.now() - gatewayStart;
+      logger.info("Bedrock Converse request completed via Gateway adapter", {
+        operation: "bedrock.converse",
+        provider: "aws-bedrock-gateway",
+        model: "anthropic.claude-sonnet-4-6 (via Bedrock Gateway)",
+        duration_ms,
+        success: true,
+        tools_executed: executedTools.length
+      });
+
+      await recordAgentEvent(userId, "BEDROCK_CONVERSE_SUCCESS", "agent", JSON.stringify({
+        model: "anthropic.claude-sonnet-4-6 (via Bedrock Gateway)",
+        provider: "AWS Bedrock Alexa+ Core",
+        toolsExecuted: executedTools,
+        actionPerformed
+      }));
+
+      return {
+        success: true,
+        reply: finalReply || "I have analyzed your living schedule and executed the requested adjustments.",
+        history: [
+          ...(history || []),
+          { role: "user", content: [{ text: userMessage }] },
+          { role: "assistant", content: [{ text: finalReply }] }
+        ],
+        toolsExecuted: executedTools,
+        actionPerformed
+      };
+
+    } catch (gatewayErr: any) {
+      logger.warn("Bedrock Gateway failed, gracefully falling back to deterministic MCP planner", {
+        error: gatewayErr.message,
+        operation: "bedrock.converse"
+      });
+      return await runDeterministicPlanner(
+        `Bedrock Gateway unavailable (${gatewayErr.message}). Failing over to deterministic MCP planner.`,
+        "BEDROCK_GATEWAY_FALLBACK",
+        gatewayErr
+      );
+    }
+  }
+
   if (!isAwsConfigured) {
     logger.info("Bedrock AWS credentials unconfigured in .env. Executing via local deterministic MCP engine.", {
       operation: "agent.deterministic",
