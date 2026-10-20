@@ -77,7 +77,7 @@ export function CommandPalette({ isOpen, onClose, commitments = [], onReplan }: 
       style={{
         position: 'fixed',
         inset: 0,
-        backgroundColor: 'rgba(9, 19, 31, 0.75)',
+        backgroundColor: 'rgba(9, 19, 31, 0.8)',
         backdropFilter: 'blur(8px)',
         zIndex: 9999,
         display: 'flex',
@@ -93,10 +93,10 @@ export function CommandPalette({ isOpen, onClose, commitments = [], onReplan }: 
         style={{
           width: '100%',
           maxWidth: '580px',
-          backgroundColor: 'var(--midnight, #0c1421)',
-          border: '1px solid var(--border-color, rgba(255,255,255,0.12))',
+          backgroundColor: '#0c1421',
+          border: '1px solid rgba(255, 255, 255, 0.14)',
           borderRadius: '12px',
-          boxShadow: '0 24px 60px rgba(0, 0, 0, 0.6), 0 0 1px 1px rgba(255, 255, 255, 0.05)',
+          boxShadow: '0 24px 60px rgba(0, 0, 0, 0.7), 0 0 1px 1px rgba(255, 255, 255, 0.08)',
           overflow: 'hidden',
           display: 'flex',
           flexDirection: 'column'
@@ -107,9 +107,9 @@ export function CommandPalette({ isOpen, onClose, commitments = [], onReplan }: 
           alignItems: 'center',
           gap: '12px',
           padding: '14px 18px',
-          borderBottom: '1px solid var(--border-color, rgba(255,255,255,0.1))'
+          borderBottom: '1px solid rgba(255, 255, 255, 0.1)'
         }}>
-          <Search size={18} style={{ color: 'var(--text-muted, #8e9bb0)', flexShrink: 0 }} />
+          <Search size={18} style={{ color: '#8E9BB0', flexShrink: 0 }} />
           <input
             ref={inputRef}
             type="text"
@@ -147,7 +147,7 @@ export function CommandPalette({ isOpen, onClose, commitments = [], onReplan }: 
             style={{
               background: 'transparent',
               border: 'none',
-              color: 'var(--text-muted, #8e9bb0)',
+              color: '#8E9BB0',
               cursor: 'pointer',
               display: 'flex',
               padding: '4px'
@@ -159,7 +159,7 @@ export function CommandPalette({ isOpen, onClose, commitments = [], onReplan }: 
 
         <div style={{ maxHeight: '360px', overflowY: 'auto', padding: '8px' }}>
           {filtered.length === 0 ? (
-            <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-muted, #8e9bb0)', fontSize: '0.9rem' }}>
+            <div style={{ padding: '24px', textAlign: 'center', color: '#8E9BB0', fontSize: '0.9rem' }}>
               No matching commands or commitments found for "{query}"
             </div>
           ) : (
@@ -178,8 +178,8 @@ export function CommandPalette({ isOpen, onClose, commitments = [], onReplan }: 
                     padding: '10px 14px',
                     borderRadius: '8px',
                     cursor: 'pointer',
-                    backgroundColor: isSelected ? 'rgba(232, 179, 110, 0.12)' : 'transparent',
-                    border: isSelected ? '1px solid rgba(232, 179, 110, 0.25)' : '1px solid transparent',
+                    backgroundColor: isSelected ? 'rgba(232, 179, 110, 0.14)' : 'transparent',
+                    border: isSelected ? '1px solid rgba(232, 179, 110, 0.35)' : '1px solid transparent',
                     transition: 'all 0.12s ease'
                   }}
                 >
@@ -188,8 +188,8 @@ export function CommandPalette({ isOpen, onClose, commitments = [], onReplan }: 
                       width: '32px',
                       height: '32px',
                       borderRadius: '6px',
-                      backgroundColor: isSelected ? 'var(--saffron, #e8b36e)' : 'rgba(255, 255, 255, 0.05)',
-                      color: isSelected ? '#1b2027' : 'var(--text-primary, #ffffff)',
+                      backgroundColor: isSelected ? '#e8b36e' : 'rgba(255, 255, 255, 0.08)',
+                      color: isSelected ? '#1b2027' : '#E2E8F0',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
@@ -201,17 +201,20 @@ export function CommandPalette({ isOpen, onClose, commitments = [], onReplan }: 
                       <div style={{ 
                         fontSize: '0.92rem', 
                         fontWeight: 600, 
-                        color: isSelected ? 'var(--saffron, #e8b36e)' : 'var(--text-primary, #ffffff)' 
+                        color: isSelected ? '#e8b36e' : '#FFFFFF' 
                       }}>
                         {item.title}
                       </div>
-                      <div style={{ fontSize: '0.78rem', color: 'var(--text-muted, #8e9bb0)' }}>
+                      <div style={{ 
+                        fontSize: '0.78rem', 
+                        color: isSelected ? '#e0c294' : '#94A3B8' 
+                      }}>
                         {item.subtitle}
                       </div>
                     </div>
                   </div>
                   {isSelected && (
-                    <ArrowRight size={14} style={{ color: 'var(--saffron, #e8b36e)' }} />
+                    <ArrowRight size={14} style={{ color: '#e8b36e' }} />
                   )}
                 </div>
               );
@@ -224,17 +227,17 @@ export function CommandPalette({ isOpen, onClose, commitments = [], onReplan }: 
           alignItems: 'center',
           justifyContent: 'space-between',
           padding: '10px 16px',
-          borderTop: '1px solid var(--border-color, rgba(255,255,255,0.08))',
-          backgroundColor: 'rgba(0,0,0,0.2)',
+          borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+          backgroundColor: 'rgba(0,0,0,0.3)',
           fontSize: '0.75rem',
-          color: 'var(--text-muted, #8e9bb0)'
+          color: '#8E9BB0'
         }}>
           <div style={{ display: 'flex', gap: '12px' }}>
-            <span><kbd style={{ padding: '2px 5px', borderRadius: '4px', background: 'rgba(255,255,255,0.1)', fontFamily: 'monospace' }}>↑↓</kbd> Navigate</span>
-            <span><kbd style={{ padding: '2px 5px', borderRadius: '4px', background: 'rgba(255,255,255,0.1)', fontFamily: 'monospace' }}>↵</kbd> Select</span>
-            <span><kbd style={{ padding: '2px 5px', borderRadius: '4px', background: 'rgba(255,255,255,0.1)', fontFamily: 'monospace' }}>esc</kbd> Close</span>
+            <span><kbd style={{ padding: '2px 5px', borderRadius: '4px', background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.15)', color: '#E2E8F0', fontFamily: 'monospace' }}>↑↓</kbd> Navigate</span>
+            <span><kbd style={{ padding: '2px 5px', borderRadius: '4px', background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.15)', color: '#E2E8F0', fontFamily: 'monospace' }}>↵</kbd> Select</span>
+            <span><kbd style={{ padding: '2px 5px', borderRadius: '4px', background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.15)', color: '#E2E8F0', fontFamily: 'monospace' }}>esc</kbd> Close</span>
           </div>
-          <div>SAARTHI Fast Navigation</div>
+          <div style={{ color: '#8E9BB0' }}>SAARTHI Fast Navigation</div>
         </div>
       </div>
     </div>

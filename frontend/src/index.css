@@ -1586,6 +1586,13 @@ h1, h2, h3, h4, h5, h6 {
   border: 0;
 }
 
+.command-palette-modal {
+  --text-primary: #FFFFFF !important;
+  --text-secondary: #C4C8D0 !important;
+  --text-muted: #8E9BB0 !important;
+  --border-color: rgba(255, 255, 255, 0.12) !important;
+}
+
 .command-palette-input {
   color: #FFFFFF !important;
   caret-color: #E8B36E !important;
@@ -1596,3 +1603,4 @@ h1, h2, h3, h4, h5, h6 {
   color: rgba(255, 255, 255, 0.45) !important;
   -webkit-text-fill-color: rgba(255, 255, 255, 0.45) !important;
 }
+
